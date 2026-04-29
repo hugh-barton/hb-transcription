@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { AudioFile } from "@/types";
 
 interface AudioUploaderProps {
@@ -15,8 +15,8 @@ export default function AudioUploader({
   loading,
 }: AudioUploaderProps) {
   const [dragActive, setDragActive] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [audioData, setAudioData] = useState<AudioFile | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleDrag = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -28,7 +28,7 @@ export default function AudioUploader({
     }
   }, []);
 
-  const handleFileSelect = (file: File) => {
+  const handleFileSelect = useCallback((file: File) => {
     const validTypes = [
       "audio/mpeg",
       "audio/mp3",
@@ -49,8 +49,6 @@ export default function AudioUploader({
       return;
     }
 
-    setSelectedFile(file);
-
     const audio = new Audio(URL.createObjectURL(file));
     audio.addEventListener("loadedmetadata", () => {
       const duration = audio.duration;
@@ -64,7 +62,7 @@ export default function AudioUploader({
       setAudioData(audioFile);
       onAudioLoaded(audioFile);
     });
-  };
+  }, [onAudioLoaded]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -77,14 +75,25 @@ export default function AudioUploader({
     }
   }, [handleFileSelect]);
 
-  const handleBrowseClick = () => {
-    document.getElementById("fileInput")?.click();
-  };
+  const handleBrowseClick = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  const handleUploadKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        handleBrowseClick();
+      }
+    },
+    [handleBrowseClick],
+  );
 
   return (
     <div className="rounded-[20px] border-2 border-dashed border-ink500 bg-ink300 p-6 transition-all duration-300">
       <input
         id="fileInput"
+        ref={fileInputRef}
         type="file"
         accept=".mp3,.wav,.m4a,audio/*"
         className="hidden"
@@ -96,6 +105,10 @@ export default function AudioUploader({
         onDragLeave={handleDrag}
         onDragOver={handleDrag}
         onDrop={handleDrop}
+        onClick={handleBrowseClick}
+        onKeyDown={handleUploadKeyDown}
+        role="button"
+        tabIndex={0}
         className={`cursor-pointer rounded-[14px] p-8 text-center transition-all duration-300 ${
           dragActive
             ? "border-sapphire400 bg-sapphire600/20 scale-105"

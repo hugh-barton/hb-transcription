@@ -6,6 +6,8 @@ import { findClipSuggestions } from "@/lib/triggers";
 import AudioPlayer from "./AudioPlayer";
 import ClipPreview from "./ClipPreview";
 
+type ClipDownloadFormat = "mp3" | "m4a";
+
 interface TranscriptDisplayProps {
   transcript: TranscriptResult | null;
   audioFile: AudioFile;
@@ -19,6 +21,9 @@ export default function TranscriptDisplay({
 }: TranscriptDisplayProps) {
   const [copied, setCopied] = useState(false);
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [downloadFormats, setDownloadFormats] = useState<
+    Record<string, ClipDownloadFormat>
+  >({});
 
   const clipSuggestions = useMemo(() => {
     if (!transcript?.segments || transcript.segments.length === 0) return [];
@@ -36,15 +41,19 @@ export default function TranscriptDisplay({
   const handleDownloadClip = async (
     clipStart: number,
     clipEnd: number,
-    filename: string
+    filename: string,
+    format: ClipDownloadFormat
   ) => {
-    setDownloading(filename);
+    const downloadFilename = replaceFileExtension(filename, format);
+
+    setDownloading(downloadFilename);
     try {
       const formData = new FormData();
       formData.append("file", audioFile.file);
       formData.append("clipStart", String(clipStart));
       formData.append("clipEnd", String(clipEnd));
-      formData.append("filename", filename);
+      formData.append("filename", downloadFilename);
+      formData.append("format", format);
 
       const response = await fetch("/api/clip", {
         method: "POST",
@@ -60,7 +69,7 @@ export default function TranscriptDisplay({
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = filename;
+      a.download = downloadFilename;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -160,7 +169,14 @@ export default function TranscriptDisplay({
             {clipSuggestions.length} Clip{clipSuggestions.length !== 1 ? "s" : ""} Found
           </h3>
           <div className="space-y-3">
-            {clipSuggestions.map((clip) => (
+            {clipSuggestions.map((clip) => {
+              const downloadFormat = downloadFormats[clip.filename] ?? "m4a";
+              const downloadFilename = replaceFileExtension(
+                clip.filename,
+                downloadFormat
+              );
+
+              return (
               <div
                 key={clip.filename}
                 className="space-y-3 rounded-[14px] bg-ink200/80 px-4 py-3"
@@ -175,32 +191,68 @@ export default function TranscriptDisplay({
                       {formatDuration(clip.clipStart)} &ndash; {formatDuration(clip.clipEnd)}
                     </p>
                   </div>
-                  <button
-                    onClick={() =>
-                      handleDownloadClip(
-                        clip.clipStart,
-                        clip.clipEnd,
-                        clip.filename
-                      )
-                    }
-                    disabled={downloading === clip.filename}
-                    className="flex shrink-0 items-center gap-2 rounded-[14px] bg-emerald px-3 py-2 text-sm font-medium text-white transition-all duration-300 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <svg
-                      className="h-4 w-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
+                  <div className="flex shrink-0 overflow-hidden rounded-[14px]">
+                    <button
+                      onClick={() =>
+                        handleDownloadClip(
+                          clip.clipStart,
+                          clip.clipEnd,
+                          clip.filename,
+                          downloadFormat
+                        )
+                      }
+                      disabled={downloading === downloadFilename}
+                      className="flex items-center gap-2 bg-emerald px-3 py-2 text-sm font-medium text-white transition-all duration-300 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                      />
-                    </svg>
-                    {downloading === clip.filename ? "Clipping..." : "Clip"}
-                  </button>
+                      <svg
+                        className="h-4 w-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                        />
+                      </svg>
+                      {downloading === downloadFilename
+                        ? "Clipping..."
+                        : "Download clip"}
+                    </button>
+                    <label className="relative border-l border-white/20 bg-emerald text-white transition-all duration-300 hover:brightness-110">
+                      <span className="sr-only">Download format</span>
+                      <select
+                        value={downloadFormat}
+                        onChange={(e) =>
+                          setDownloadFormats((current) => ({
+                            ...current,
+                            [clip.filename]: e.target
+                              .value as ClipDownloadFormat,
+                          }))
+                        }
+                        disabled={downloading === downloadFilename}
+                        className="h-full appearance-none bg-transparent py-2 pl-3 pr-8 text-sm font-medium uppercase outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <option value="m4a">M4A</option>
+                        <option value="mp3">MP3</option>
+                      </select>
+                      <svg
+                        className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M19 9l-7 7-7-7"
+                        />
+                      </svg>
+                    </label>
+                  </div>
                 </div>
                 <ClipPreview
                   audioFile={audioFile}
@@ -208,7 +260,8 @@ export default function TranscriptDisplay({
                   clipEnd={clip.clipEnd}
                 />
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -241,6 +294,13 @@ export default function TranscriptDisplay({
       </div>
     </div>
   );
+}
+
+function replaceFileExtension(
+  filename: string,
+  extension: ClipDownloadFormat
+): string {
+  return filename.replace(/\.[a-z0-9]+$/i, "") + "." + extension;
 }
 
 function formatDuration(seconds: number): string {
