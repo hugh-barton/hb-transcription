@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 
 interface Settings {
   model: string;
@@ -13,23 +13,24 @@ interface SettingsPanelProps {
   onSettingsChange: (settings: Settings) => void;
 }
 
-export default function SettingsPanel({ settings, onSettingsChange }: SettingsPanelProps) {
-  const [apiKey, setApiKey] = useState("");
-  const [saveStatus, setSaveStatus] = useState<"idle" | "saved" | "error">("idle");
-
-  useEffect(() => {
-    const savedApiKey = localStorage.getItem("openai_api_key");
-    if (savedApiKey) {
-      setApiKey(savedApiKey);
-    }
-  }, []);
+export default function SettingsPanel({
+  settings,
+  onSettingsChange,
+}: SettingsPanelProps) {
+  const [apiKey, setApiKey] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return localStorage.getItem("openai_api_key") ?? "";
+  });
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saved" | "error">(
+    "idle",
+  );
 
   const handleSave = () => {
     try {
       localStorage.setItem("openai_api_key", apiKey.trim());
       setSaveStatus("saved");
       setTimeout(() => setSaveStatus("idle"), 2000);
-    } catch (error) {
+    } catch {
       setSaveStatus("error");
     }
   };
@@ -47,15 +48,21 @@ export default function SettingsPanel({ settings, onSettingsChange }: SettingsPa
 
   return (
     <>
-      <div className="flex items-center justify-between">
-        <h2 className="mb-6 text-xl font-semibold text-ink900">
+      <div className="pr-10">
+        <p className="font-[family-name:var(--font-hand)] text-2xl font-semibold text-primary-hover">
+          Goldfish
+        </p>
+        <h2 className="mt-1 text-xl font-semibold text-text-primary">
           Settings
         </h2>
       </div>
 
-      <div className="space-y-5">
+      <div className="mt-6 space-y-5">
         <div>
-          <label htmlFor="apiKey" className="mb-2 block text-sm font-medium text-sapphire300">
+          <label
+            htmlFor="apiKey"
+            className="mb-2 block text-sm font-semibold text-primary-hover"
+          >
             OpenAI API Key
           </label>
           <input
@@ -64,96 +71,137 @@ export default function SettingsPanel({ settings, onSettingsChange }: SettingsPa
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
             placeholder="sk-..."
-            className="w-full rounded-[14px] border border-ink500 bg-ink200 px-4 py-3 text-ink900 placeholder-ink700 transition-all duration-300 focus:border-sapphire400 focus:outline-none focus:ring-1 focus:ring-sapphire400"
+            className="soft-focus-ring w-full rounded-[14px] border border-border bg-surface px-4 py-3 text-text-primary placeholder-text-muted transition-colors focus:border-primary"
           />
-          <p className="mt-2 text-xs text-ink700">
-            Your API key is stored locally in your browser. It is sent only to the server-side API route which forwards it to OpenAI.
+          <p className="mt-2 text-xs leading-relaxed text-text-muted">
+            Your API key is stored locally in your browser. The current
+            transcription route still uses the configured server environment key.
           </p>
           <div className="mt-3 flex gap-2">
             <button
+              type="button"
               onClick={handleSave}
               disabled={!validateApiKey()}
-              className="rounded-[14px] bg-sapphire500 px-4 py-2 text-sm font-medium text-white transition-all duration-300 hover:bg-sapphire400 disabled:cursor-not-allowed disabled:opacity-50"
+              className="primary-button soft-focus-ring rounded-[14px] px-4 py-2 text-sm font-semibold disabled:opacity-50"
             >
-              {saveStatus === "saved" ? "Saved!" : saveStatus === "error" ? "Error" : "Save Key"}
+              {saveStatus === "saved"
+                ? "Saved"
+                : saveStatus === "error"
+                  ? "Error"
+                  : "Save Key"}
             </button>
             <button
+              type="button"
               onClick={handleClear}
-              className="rounded-[14px] bg-rose px-4 py-2 text-sm font-medium text-white transition-all duration-300 hover:brightness-110"
+              className="soft-focus-ring rounded-[14px] border border-danger/30 bg-danger/10 px-4 py-2 text-sm font-semibold text-danger transition-colors hover:bg-danger/15"
             >
               Clear Key
             </button>
           </div>
         </div>
 
-        <div className="h-px bg-ink500" />
+        <div className="h-px bg-border" />
 
         <div>
-          <label htmlFor="model" className="mb-2 block text-sm font-medium text-sapphire300">
+          <label
+            htmlFor="model"
+            className="mb-2 block text-sm font-semibold text-primary-hover"
+          >
             Whisper Model
           </label>
           <select
             id="model"
             value={settings.model}
-            onChange={(e) => onSettingsChange({ ...settings, model: e.target.value })}
-            className="w-full rounded-[14px] border border-ink500 bg-ink200 px-4 py-3 text-ink900 transition-all duration-300 focus:border-sapphire400 focus:outline-none focus:ring-1 focus:ring-sapphire400"
+            onChange={(e) =>
+              onSettingsChange({ ...settings, model: e.target.value })
+            }
+            className="soft-focus-ring w-full rounded-[14px] border border-border bg-surface px-4 py-3 text-text-primary transition-colors focus:border-primary"
           >
             <option value="whisper-1">whisper-1 (default)</option>
-            <option value="whisper-1-large-v2">whisper-1-large-v2 (advanced)</option>
+            <option value="whisper-1-large-v2">
+              whisper-1-large-v2 (advanced)
+            </option>
           </select>
-          <p className="mt-2 text-xs text-ink700">
-            whisper-1 is recommended for most use cases. Large models are more accurate but slower.
+          <p className="mt-2 text-xs leading-relaxed text-text-muted">
+            whisper-1 is recommended for most use cases. Large models are more
+            accurate but slower.
           </p>
         </div>
 
         <div>
-          <label htmlFor="language" className="mb-2 block text-sm font-medium text-sapphire300">
+          <label
+            htmlFor="language"
+            className="mb-2 block text-sm font-semibold text-primary-hover"
+          >
             Language (optional)
           </label>
           <input
             type="text"
             id="language"
             value={settings.language}
-            onChange={(e) => onSettingsChange({ ...settings, language: e.target.value })}
+            onChange={(e) =>
+              onSettingsChange({ ...settings, language: e.target.value })
+            }
             placeholder="en, es, fr, de, etc."
-            className="w-full rounded-[14px] border border-ink500 bg-ink200 px-4 py-3 text-ink900 placeholder-ink700 transition-all duration-300 focus:border-sapphire400 focus:outline-none focus:ring-1 focus:ring-sapphire400"
+            className="soft-focus-ring w-full rounded-[14px] border border-border bg-surface px-4 py-3 text-text-primary placeholder-text-muted transition-colors focus:border-primary"
           />
-          <p className="mt-2 text-xs text-ink700">
-            Optional language code to improve accuracy. Leave empty to let Whisper auto-detect.
+          <p className="mt-2 text-xs leading-relaxed text-text-muted">
+            Optional language code to improve accuracy. Leave empty to let
+            Whisper auto-detect.
           </p>
         </div>
 
         <div>
-          <label htmlFor="responseFormat" className="mb-2 block text-sm font-medium text-sapphire300">
+          <label
+            htmlFor="responseFormat"
+            className="mb-2 block text-sm font-semibold text-primary-hover"
+          >
             Response Format
           </label>
           <select
             id="responseFormat"
             value={settings.responseFormat}
-            onChange={(e) => onSettingsChange({ ...settings, responseFormat: e.target.value as Settings["responseFormat"] })}
-            className="w-full rounded-[14px] border border-ink500 bg-ink200 px-4 py-3 text-ink900 transition-all duration-300 focus:border-sapphire400 focus:outline-none focus:ring-1 focus:ring-sapphire400"
+            onChange={(e) =>
+              onSettingsChange({
+                ...settings,
+                responseFormat: e.target.value as Settings["responseFormat"],
+              })
+            }
+            className="soft-focus-ring w-full rounded-[14px] border border-border bg-surface px-4 py-3 text-text-primary transition-colors focus:border-primary"
           >
-            <option value="verbose_json">verbose_json (detailed with timestamps)</option>
+            <option value="verbose_json">
+              verbose_json (detailed with timestamps)
+            </option>
             <option value="json">json (structured)</option>
             <option value="text">text (plain text)</option>
             <option value="srt">srt (subtitle format)</option>
           </select>
-          <p className="mt-2 text-xs text-ink700">
-            verbose_json returns the richest data (duration, language, segments). Other formats return plain text only.
+          <p className="mt-2 text-xs leading-relaxed text-text-muted">
+            verbose_json returns the richest data. Other formats return plain
+            text only.
           </p>
         </div>
 
-        <div className="rounded-[14px] bg-ink200 p-4">
-          <h3 className="mb-2 text-xs font-semibold uppercase tracking-widest text-sapphire300">Usage Information</h3>
-          <div className="space-y-1 text-sm text-ink800">
+        <div className="rounded-[16px] border border-border bg-primary-wash p-4">
+          <h3 className="mb-2 text-xs font-semibold uppercase text-primary-hover">
+            Usage Information
+          </h3>
+          <div className="space-y-1 text-sm text-text-secondary">
             <p>
-              <span className="text-sapphire300">Current model:</span> {settings.model}
+              <span className="font-medium text-primary-hover">
+                Current model:
+              </span>{" "}
+              {settings.model}
             </p>
             <p>
-              <span className="text-sapphire300">OpenAI pricing:</span> ~$0.006 per minute of audio
+              <span className="font-medium text-primary-hover">
+                OpenAI pricing:
+              </span>{" "}
+              ~$0.006 per minute of audio
             </p>
             <p>
-              <span className="text-sapphire300">Free tier:</span> 60 minutes included
+              <span className="font-medium text-primary-hover">Free tier:</span>{" "}
+              60 minutes included
             </p>
           </div>
         </div>

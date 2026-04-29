@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useCallback, useRef, useState } from "react";
 import { AudioFile } from "@/types";
 
 interface AudioUploaderProps {
@@ -28,52 +28,60 @@ export default function AudioUploader({
     }
   }, []);
 
-  const handleFileSelect = useCallback((file: File) => {
-    const validTypes = [
-      "audio/mpeg",
-      "audio/mp3",
-      "audio/wav",
-      "audio/x-wav",
-      "audio/x-m4a",
-      "audio/mp4",
-      "audio/aac",
-    ];
+  const handleFileSelect = useCallback(
+    (file: File) => {
+      const validTypes = [
+        "audio/mpeg",
+        "audio/mp3",
+        "audio/wav",
+        "audio/x-wav",
+        "audio/x-m4a",
+        "audio/mp4",
+        "audio/aac",
+      ];
 
-    if (!validTypes.includes(file.type) && !file.name.endsWith(".mp3")) {
-      alert("Please select a valid audio file (MP3, WAV, or M4A)");
-      return;
-    }
+      if (!validTypes.includes(file.type) && !file.name.endsWith(".mp3")) {
+        alert("Please select a valid audio file (MP3, WAV, or M4A)");
+        return;
+      }
 
-    if (file.size > 25 * 1024 * 1024) {
-      alert("File size exceeds 25MB limit");
-      return;
-    }
+      if (file.size > 25 * 1024 * 1024) {
+        alert("File size exceeds 25MB limit");
+        return;
+      }
 
-    const audio = new Audio(URL.createObjectURL(file));
-    audio.addEventListener("loadedmetadata", () => {
-      const duration = audio.duration;
-      const audioFile: AudioFile = {
-        file,
-        name: file.name,
-        size: file.size,
-        type: file.type,
-        duration: duration || 0,
-      };
-      setAudioData(audioFile);
-      onAudioLoaded(audioFile);
-    });
-  }, [onAudioLoaded]);
+      const url = URL.createObjectURL(file);
+      const audio = new Audio(url);
+      audio.addEventListener("loadedmetadata", () => {
+        const duration = audio.duration;
+        URL.revokeObjectURL(url);
+        const audioFile: AudioFile = {
+          file,
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          duration: duration || 0,
+        };
+        setAudioData(audioFile);
+        onAudioLoaded(audioFile);
+      });
+    },
+    [onAudioLoaded],
+  );
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setDragActive(false);
 
-    const files = e.dataTransfer.files;
-    if (files && files.length > 0) {
-      handleFileSelect(files[0]);
-    }
-  }, [handleFileSelect]);
+      const files = e.dataTransfer.files;
+      if (files && files.length > 0) {
+        handleFileSelect(files[0]);
+      }
+    },
+    [handleFileSelect],
+  );
 
   const handleBrowseClick = useCallback(() => {
     fileInputRef.current?.click();
@@ -90,7 +98,15 @@ export default function AudioUploader({
   );
 
   return (
-    <div className="rounded-[20px] border-2 border-dashed border-ink500 bg-ink300 p-6 transition-all duration-300">
+    <div
+      onDragEnter={handleDrag}
+      onDragLeave={handleDrag}
+      onDragOver={handleDrag}
+      onDrop={handleDrop}
+      className={`rounded-[20px] transition-colors ${
+        dragActive ? "bg-primary-wash" : "bg-transparent"
+      }`}
+    >
       <input
         id="fileInput"
         ref={fileInputRef}
@@ -101,150 +117,187 @@ export default function AudioUploader({
       />
 
       <div
-        onDragEnter={handleDrag}
-        onDragLeave={handleDrag}
-        onDragOver={handleDrag}
-        onDrop={handleDrop}
         onClick={handleBrowseClick}
         onKeyDown={handleUploadKeyDown}
         role="button"
         tabIndex={0}
-        className={`cursor-pointer rounded-[14px] p-8 text-center transition-all duration-300 ${
-          dragActive
-            ? "border-sapphire400 bg-sapphire600/20 scale-105"
-            : "border-ink500 bg-ink200 hover:border-sapphire400"
-        }`}
+        className="soft-focus-ring mx-auto flex max-w-3xl cursor-pointer flex-col items-center rounded-[18px] px-4 py-8 text-center md:px-8 md:py-10"
       >
-        <div className="flex flex-col items-center space-y-3">
-          <svg
-            className="h-10 w-10 text-sapphire300"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={1.5}
-              d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-            />
-          </svg>
-          <div className="space-y-1">
-            <p className="text-lg font-semibold text-ink900">
-              {dragActive ? "Drop your audio file here" : "Upload Audio File"}
-            </p>
-            <p className="text-sm text-ink700">
-              {dragActive
-                ? "Release to upload"
-                : "Drag and drop MP3, WAV, or M4A files"}
-            </p>
-          </div>
+        <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary-wash text-primary-hover">
+          <UploadIcon className="h-7 w-7" />
         </div>
+
+        <h1 className="text-2xl font-semibold text-text-primary md:text-[28px]">
+          {dragActive ? "Drop your jam session here" : "Start a New Session"}
+        </h1>
+        <p className="mt-2 max-w-sm text-base leading-relaxed text-text-secondary">
+          {dragActive
+            ? "Release to upload your audio"
+            : "Drag your jam session here or upload audio from your device"}
+        </p>
+
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            handleBrowseClick();
+          }}
+          className="primary-button soft-focus-ring mt-5 inline-flex items-center gap-3 px-6 py-3 text-base font-semibold"
+        >
+          <UploadIcon className="h-5 w-5" />
+          Upload Session
+        </button>
+
+        <p className="mt-4 flex items-center gap-2 text-sm text-text-secondary">
+          <LockIcon className="h-4 w-4" />
+          Your audio is private and secure
+        </p>
       </div>
 
-      <div className="mt-5 flex gap-4">
-        <button
-          onClick={handleBrowseClick}
-          className="flex flex-1 items-center justify-center gap-2 rounded-[14px] bg-sapphire500 px-5 py-3 font-medium text-white transition-all duration-300 hover:bg-sapphire400"
-        >
-          <svg
-            className="h-4 w-4"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
-            />
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
-            />
-          </svg>
-          Browse Files
-        </button>
-        {audioData && !loading && (
-          <button
-            onClick={() => onTranscribe(audioData.file)}
-            disabled={loading}
-            className="flex flex-1 items-center justify-center gap-2 rounded-[14px] bg-emerald px-5 py-3 font-medium text-white transition-all duration-300 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <svg
-              className="h-4 w-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
-              />
-            </svg>
-            Transcribe
-          </button>
-        )}
+      <div className="mx-auto mt-2 flex max-w-3xl flex-wrap items-center justify-center gap-3 text-sm text-text-secondary md:gap-5">
+        <InfoPill icon={<MusicIcon className="h-5 w-5" />}>
+          WAV, MP3, M4A supported
+        </InfoPill>
+        <span className="hidden h-8 w-px bg-border md:block" />
+        <InfoPill icon={<ClockIcon className="h-5 w-5" />}>
+          Up to 25 MB
+        </InfoPill>
+        <span className="hidden h-8 w-px bg-border md:block" />
+        <InfoPill icon={<SparkleIcon className="h-5 w-5" />}>
+          Goldfish auto-detects exciting moments
+        </InfoPill>
       </div>
 
       {audioData && (
-        <div className="mt-5 rounded-[14px] bg-ink200 p-4">
-          <h3 className="mb-2 text-base font-semibold text-ink900">
-            Selected File
-          </h3>
-          <div className="space-y-1 text-sm">
-            <p className="text-ink800">
-              <span className="text-sapphire300">Name:</span> {audioData.name}
-            </p>
-            <p className="text-ink800">
-              <span className="text-sapphire300">Size:</span>{" "}
-              {(audioData.size / 1024 / 1024).toFixed(2)} MB
-            </p>
-            <p className="text-ink800">
-              <span className="text-sapphire300">Duration:</span>{" "}
-              {audioData.duration.toFixed(2)} seconds
-            </p>
-            <p className="text-ink800">
-              <span className="text-sapphire300">Type:</span> {audioData.type}
-            </p>
+        <div className="mx-auto mt-7 max-w-3xl rounded-[16px] border border-border bg-surface p-4 text-left shadow-[var(--shadow-card)]">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase text-primary-hover">
+                Selected File
+              </p>
+              <h2 className="mt-1 truncate text-base font-semibold text-text-primary">
+                {audioData.name}
+              </h2>
+              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-text-muted">
+                <span>{(audioData.size / 1024 / 1024).toFixed(2)} MB</span>
+                <span>{audioData.duration.toFixed(2)} seconds</span>
+                <span>{audioData.type || "Audio file"}</span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => onTranscribe(audioData.file)}
+              disabled={loading}
+              className="primary-button soft-focus-ring inline-flex shrink-0 items-center justify-center gap-2 px-5 py-3 text-sm font-semibold disabled:opacity-60"
+            >
+              {loading ? (
+                <>
+                  <SpinnerIcon className="h-4 w-4 animate-spin" />
+                  Transcribing
+                </>
+              ) : (
+                <>
+                  <MicIcon className="h-4 w-4" />
+                  Use Session
+                </>
+              )}
+            </button>
           </div>
         </div>
       )}
 
       {loading && (
-        <div className="mt-5 rounded-[14px] border border-sapphire400 bg-sapphire600/20 p-4">
+        <div className="mx-auto mt-4 max-w-3xl rounded-[16px] border border-primary/25 bg-primary-wash p-4">
           <div className="flex items-center justify-center gap-3">
-            <svg
-              className="h-5 w-5 animate-spin text-sapphire300"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-            >
-              <circle
-                className="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                strokeWidth="4"
-              ></circle>
-              <path
-                className="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-              ></path>
-            </svg>
-            <span className="text-sm font-medium text-sapphire300">
+            <SpinnerIcon className="h-5 w-5 animate-spin text-primary-hover" />
+            <span className="text-sm font-medium text-primary-hover">
               Transcribing audio...
             </span>
           </div>
         </div>
       )}
     </div>
+  );
+}
+
+function InfoPill({
+  children,
+  icon,
+}: {
+  children: React.ReactNode;
+  icon: React.ReactNode;
+}) {
+  return (
+    <span className="flex items-center gap-2">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] border border-border bg-surface text-text-secondary">
+        {icon}
+      </span>
+      {children}
+    </span>
+  );
+}
+
+function UploadIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 16V4" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="m7 9 5-5 5 5" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M20 16.5a4 4 0 0 1-4 4H8a4 4 0 0 1-.8-7.9 5.4 5.4 0 0 1 10.5 1.4H18a2 2 0 0 1 2 2.5Z" />
+    </svg>
+  );
+}
+
+function LockIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M7 10V8a5 5 0 0 1 10 0v2" />
+      <rect width="14" height="10" x="5" y="10" rx="2" />
+    </svg>
+  );
+}
+
+function MusicIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 18V5l10-2v13" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 18a3 3 0 1 1-3-3 3 3 0 0 1 3 3Zm10-2a3 3 0 1 1-3-3 3 3 0 0 1 3 3Z" />
+    </svg>
+  );
+}
+
+function ClockIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
+      <circle cx="12" cy="12" r="8.5" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 7.5V12l3 2" />
+    </svg>
+  );
+}
+
+function SparkleIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 3 13.7 8.3 19 10l-5.3 1.7L12 17l-1.7-5.3L5 10l5.3-1.7L12 3Z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M19 15v4m-2-2h4" />
+    </svg>
+  );
+}
+
+function MicIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 14a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3Z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 0 1-14 0m7 7v3m-4 0h8" />
+    </svg>
+  );
+}
+
+function SpinnerIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8V0C5.4 0 0 5.4 0 12h4Z" />
+    </svg>
   );
 }

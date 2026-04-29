@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AudioFile } from "@/types";
 
 interface ClipPreviewProps {
@@ -93,31 +93,33 @@ export default function ClipPreview({
 
   if (loading) {
     return (
-      <div className="flex items-center gap-3">
-        <div className="h-9 w-9 shrink-0 animate-spin rounded-full border-2 border-ink500 border-t-emerald" />
-        <p className="text-sm text-ink700">Generating preview...</p>
+      <div className="flex items-center gap-3 rounded-[12px] border border-border bg-surface px-3 py-3">
+        <div className="h-8 w-8 shrink-0 animate-spin rounded-full border-2 border-border border-t-primary" />
+        <p className="text-sm text-text-muted">Generating preview...</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <p className="text-xs text-rose">Preview unavailable: {error}</p>
+      <p className="rounded-[12px] border border-danger/25 bg-danger/10 px-3 py-2 text-xs text-danger">
+        Preview unavailable: {error}
+      </p>
     );
   }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 rounded-[12px] border border-border bg-surface p-3">
       {audioUrl ? (
         <audio
           ref={audioRef}
           src={audioUrl}
           controls
           preload="auto"
-          className="w-full"
+          className="audio-control w-full"
         />
       ) : null}
-      <p className="text-xs text-ink700">
+      <p className="text-xs text-text-muted">
         {mins}:{secs.toString().padStart(2, "0")} preview
       </p>
     </div>

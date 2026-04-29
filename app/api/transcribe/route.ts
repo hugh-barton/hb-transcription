@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { transcribeAudio } from "@/lib/openai";
-import { AudioFile } from "@/types";
+
+type TranscribeParams = {
+  model?: string;
+  language?: string;
+  response_format?: "json" | "text" | "srt" | "verbose_json";
+};
 
 export async function POST(request: NextRequest) {
   try {
@@ -23,7 +28,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const transcribeParams: any = {};
+    const transcribeParams: TranscribeParams = {};
 
     if (formData.get("model")) {
       transcribeParams.model = formData.get("model") as string;
