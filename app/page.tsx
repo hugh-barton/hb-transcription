@@ -1,9 +1,8 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import AudioUploader from "@/components/AudioUploader";
-import TranscriptDisplay from "@/components/TranscriptDisplay";
 import SettingsPanel from "@/components/SettingsPanel";
 import { AudioFile, TranscriptResult } from "@/types";
 import goldfishIcon from "../assets/Goldfish-Icon.png";
@@ -46,6 +45,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const transcribeRunRef = useRef(0);
   const [settings, setSettings] = useState<TranscriptionSettings>(
     loadSavedSettings,
   );
@@ -65,6 +65,8 @@ export default function Home() {
   };
 
   const handleTranscribe = async (file: File) => {
+    const runId = transcribeRunRef.current + 1;
+    transcribeRunRef.current = runId;
     setLoading(true);
     setError(null);
 
@@ -90,18 +92,24 @@ export default function Home() {
       }
 
       const data = await response.json();
+      if (transcribeRunRef.current !== runId) return;
       setTranscript(data);
     } catch (err) {
+      if (transcribeRunRef.current !== runId) return;
       setError(err instanceof Error ? err.message : "An error occurred");
     } finally {
-      setLoading(false);
+      if (transcribeRunRef.current === runId) {
+        setLoading(false);
+      }
     }
   };
 
   const handleClear = () => {
+    transcribeRunRef.current += 1;
     setAudioFile(null);
     setTranscript(null);
     setError(null);
+    setLoading(false);
   };
 
   const handleAudioLoaded = (file: AudioFile) => {
@@ -154,7 +162,9 @@ export default function Home() {
             onClick={() => setShowSettings(true)}
             className="mt-auto flex w-full items-center gap-4 rounded-[14px] px-4 py-4 text-left text-base font-medium text-text-secondary transition-colors hover:bg-primary-wash hover:text-primary-hover"
           >
-            <SettingsIcon className="h-5 w-5" />
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center">
+              <SettingsIcon className="h-5 w-5" />
+            </span>
             Settings
           </button>
         </aside>
@@ -197,42 +207,16 @@ export default function Home() {
           </header>
 
           <div className="px-4 py-6 md:px-8 lg:px-9">
-            <section className="rounded-[24px] border border-dashed border-primary/60 bg-surface-card p-4 shadow-[var(--shadow-soft)] md:p-7 lg:p-9">
+            <section className="h-[560px] overflow-hidden rounded-[24px] border border-dashed border-primary/60 bg-[#FDFBF7] p-4 shadow-[var(--shadow-soft)] md:h-[460px] md:p-7 lg:p-9">
               <AudioUploader
+                audioFile={audioFile}
+                transcript={transcript}
+                error={error}
                 onAudioLoaded={handleAudioLoaded}
                 onTranscribe={handleTranscribe}
+                onReset={handleClear}
                 loading={loading}
               />
-
-              {error && (
-                <div className="mt-5 rounded-[16px] border border-danger/30 bg-danger/10 p-4">
-                  <h3 className="mb-1 text-sm font-semibold text-danger">
-                    Error
-                  </h3>
-                  <p className="text-sm text-text-secondary">{error}</p>
-                </div>
-              )}
-
-              {audioFile && (
-                <div className="mt-6 grid gap-5 xl:grid-cols-[0.88fr_1.12fr]">
-                  <div className="card p-4 md:p-5">
-                    <h2 className="mb-4 text-base font-semibold text-text-primary">
-                      Audio Preview
-                    </h2>
-                    <TranscriptDisplay transcript={null} audioFile={audioFile} />
-                  </div>
-
-                  {transcript && (
-                    <div className="card p-4 md:p-5">
-                      <TranscriptDisplay
-                        transcript={transcript}
-                        audioFile={audioFile}
-                        onClear={handleClear}
-                      />
-                    </div>
-                  )}
-                </div>
-              )}
             </section>
 
             <section className="mt-6 grid gap-6 xl:grid-cols-[0.82fr_1.18fr]">
@@ -321,9 +305,23 @@ function DownloadIcon({ className }: { className?: string }) {
 
 function SettingsIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Z" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M19.4 15a8.1 8.1 0 0 0 .1-1l2-1.5-2-3.5-2.4 1a7.7 7.7 0 0 0-1.7-1l-.3-2.6H9l-.3 2.6a7.7 7.7 0 0 0-1.7 1L4.6 9l-2 3.5 2 1.5a8.1 8.1 0 0 0 .1 2l-2 1.5 2 3.5 2.4-1a7.7 7.7 0 0 0 1.7 1l.3 2.6h6.2l.3-2.6a7.7 7.7 0 0 0 1.7-1l2.4 1 2-3.5-2.3-2Z" />
+    <svg
+      className={className}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="3.25" />
+      <path strokeLinecap="round" d="M12 3.25v3" />
+      <path strokeLinecap="round" d="M12 17.75v3" />
+      <path strokeLinecap="round" d="M3.25 12h3" />
+      <path strokeLinecap="round" d="M17.75 12h3" />
+      <path strokeLinecap="round" d="m5.8 5.8 2.1 2.1" />
+      <path strokeLinecap="round" d="m16.1 16.1 2.1 2.1" />
+      <path strokeLinecap="round" d="m18.2 5.8-2.1 2.1" />
+      <path strokeLinecap="round" d="m7.9 16.1-2.1 2.1" />
     </svg>
   );
 }
