@@ -170,6 +170,26 @@ button:disabled {
   background-color: var(--muted);
 }
 
+.goldfish-loading-progress {
+  transform-origin: left center;
+  animation: goldfish-progress-fill 12s ease-in-out infinite;
+}
+
+@keyframes goldfish-progress-fill {
+  0% {
+    transform: scaleX(0);
+    opacity: 0.7;
+  }
+  65% {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scaleX(1);
+    opacity: 0.55;
+  }
+}
+
 @theme inline {
   --font-heading: var(--font-display);
   --font-sans: var(--font-body);

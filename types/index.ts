@@ -4,6 +4,12 @@ export interface AudioFile {
   size: number;
   type: string;
   duration: number;
+  format?: string;
+  lastModified?: number;
+  sampleRate?: number;
+  channels?: number;
+  bitDepth?: number;
+  metadataStatus?: "available" | "partial" | "unknown";
 }
 
 export interface Segment {

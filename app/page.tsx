@@ -11,6 +11,7 @@ import {
   TranscriptionJobStatus,
 } from "@/types";
 import goldfishIcon from "../assets/Goldfish-Icon.png";
+import waterRipples from "../assets/water-ripples.png";
 
 const navItems = [
   { label: "Home", icon: HomeIcon, active: true },
@@ -253,7 +254,14 @@ export default function Home() {
           </header>
 
           <div className="px-4 py-6 md:px-8 lg:px-9">
-            <section className="h-[560px] overflow-hidden rounded-[24px] border border-dashed border-primary/60 bg-[#FDFBF7] p-4 shadow-[var(--shadow-soft)] md:h-[460px] md:p-7 lg:p-9">
+            <section
+              className="min-h-[650px] overflow-hidden rounded-[24px] border border-dashed border-primary/60 bg-card p-4 shadow-[var(--shadow-soft)] md:p-7 lg:min-h-[calc(100vh-150px)] lg:p-9"
+              style={{
+                backgroundImage: `url(${waterRipples.src})`,
+                backgroundPosition: "center",
+                backgroundSize: "cover",
+              }}
+            >
               <AudioUploader
                 audioFile={audioFile}
                 transcript={transcript}
@@ -264,20 +272,6 @@ export default function Home() {
                 loading={loading}
                 transcriptionStatus={transcriptionStatus}
               />
-            </section>
-
-            <section className="mt-6 grid gap-6 xl:grid-cols-[0.82fr_1.18fr]">
-              <div className="min-h-[260px] rounded-[16px] border border-border bg-surface-card p-5 shadow-[var(--shadow-card)]">
-                <h2 className="text-base font-semibold text-text-primary">
-                  Recent Sessions
-                </h2>
-              </div>
-
-              <div className="min-h-[260px] rounded-[16px] border border-border bg-surface-card p-5 shadow-[var(--shadow-card)]">
-                <h2 className="text-base font-semibold text-text-primary">
-                  Exciting Moments
-                </h2>
-              </div>
             </section>
           </div>
         </section>
