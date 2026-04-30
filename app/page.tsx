@@ -4,7 +4,12 @@ import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import AudioUploader from "@/components/AudioUploader";
 import SettingsPanel from "@/components/SettingsPanel";
-import { AudioFile, TranscriptResult } from "@/types";
+import {
+  AudioFile,
+  TranscriptResult,
+  TranscriptionJobStart,
+  TranscriptionJobStatus,
+} from "@/types";
 import goldfishIcon from "../assets/Goldfish-Icon.png";
 
 const navItems = [
@@ -15,15 +20,11 @@ const navItems = [
 ];
 
 type TranscriptionSettings = {
-  model: string;
   language: string;
-  responseFormat: "json" | "text" | "srt" | "verbose_json";
 };
 
 const defaultSettings: TranscriptionSettings = {
-  model: "whisper-1",
   language: "",
-  responseFormat: "verbose_json",
 };
 
 function loadSavedSettings(): TranscriptionSettings {
@@ -33,7 +34,10 @@ function loadSavedSettings(): TranscriptionSettings {
   if (!saved) return defaultSettings;
 
   try {
-    return { ...defaultSettings, ...JSON.parse(saved) };
+    const parsed = JSON.parse(saved) as Partial<TranscriptionSettings>;
+    return {
+      language: typeof parsed.language === "string" ? parsed.language : "",
+    };
   } catch {
     return defaultSettings;
   }
@@ -44,6 +48,8 @@ export default function Home() {
   const [transcript, setTranscript] = useState<TranscriptResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [transcriptionStatus, setTranscriptionStatus] =
+    useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const transcribeRunRef = useRef(0);
   const [settings, setSettings] = useState<TranscriptionSettings>(
@@ -69,19 +75,24 @@ export default function Home() {
     transcribeRunRef.current = runId;
     setLoading(true);
     setError(null);
+    setTranscriptionStatus("Uploading session to AssemblyAI");
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("model", settings.model);
-      formData.append("response_format", settings.responseFormat);
+      const params = new URLSearchParams();
       if (settings.language) {
-        formData.append("language", settings.language);
+        params.set("language", settings.language);
       }
 
-      const response = await fetch("/api/transcribe", {
+      const startUrl = params.size
+        ? `/api/transcribe?${params.toString()}`
+        : "/api/transcribe";
+
+      const response = await fetch(startUrl, {
         method: "POST",
-        body: formData,
+        headers: {
+          "content-type": file.type || "application/octet-stream",
+        },
+        body: file,
       });
 
       if (!response.ok) {
@@ -91,9 +102,11 @@ export default function Home() {
         );
       }
 
-      const data = await response.json();
+      const data = (await response.json()) as TranscriptionJobStart;
       if (transcribeRunRef.current !== runId) return;
-      setTranscript(data);
+      setTranscriptionStatus(getStatusMessage(data.status));
+
+      await pollTranscriptionJob(data.transcriptId, runId);
     } catch (err) {
       if (transcribeRunRef.current !== runId) return;
       setError(err instanceof Error ? err.message : "An error occurred");
@@ -109,6 +122,7 @@ export default function Home() {
     setAudioFile(null);
     setTranscript(null);
     setError(null);
+    setTranscriptionStatus(null);
     setLoading(false);
   };
 
@@ -116,6 +130,38 @@ export default function Home() {
     setAudioFile(file);
     setTranscript(null);
     setError(null);
+    setTranscriptionStatus(null);
+  };
+
+  const pollTranscriptionJob = async (transcriptId: string, runId: number) => {
+    while (transcribeRunRef.current === runId) {
+      await wait(3000);
+      if (transcribeRunRef.current !== runId) return;
+
+      const response = await fetch(`/api/transcribe/${transcriptId}`);
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(
+          errData.error || `Transcription failed: ${response.statusText}`,
+        );
+      }
+
+      const data = (await response.json()) as TranscriptionJobStatus;
+      if (transcribeRunRef.current !== runId) return;
+
+      if (data.status === "completed") {
+        setTranscript(data.transcript);
+        setTranscriptionStatus("Transcript ready");
+        return;
+      }
+
+      if (data.status === "error") {
+        throw new Error(data.error);
+      }
+
+      setTranscriptionStatus(getStatusMessage(data.status));
+    }
   };
 
   return (
@@ -216,6 +262,7 @@ export default function Home() {
                 onTranscribe={handleTranscribe}
                 onReset={handleClear}
                 loading={loading}
+                transcriptionStatus={transcriptionStatus}
               />
             </section>
 
@@ -261,6 +308,15 @@ export default function Home() {
       )}
     </main>
   );
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function getStatusMessage(status: "queued" | "processing") {
+  if (status === "queued") return "Session queued with AssemblyAI";
+  return "AssemblyAI is transcribing the session";
 }
 
 function HomeIcon({ className }: { className?: string }) {

@@ -5,10 +5,10 @@
 Create a `.env.local` file in the project root:
 
 ```bash
-OPENAI_API_KEY=sk-your-actual-api-key-here
+ASSEMBLYAI_API_KEY=your-assemblyai-api-key-here
 ```
 
-Get your API key from [platform.openai.com](https://platform.openai.com)
+Get your API key from [assemblyai.com/dashboard/api-keys](https://www.assemblyai.com/dashboard/api-keys).
 
 ## 2. Start the Server
 
@@ -24,27 +24,18 @@ Or use the startup script:
 
 ## 3. Open in Browser
 
-Visit [http://localhost:3000](http://localhost:3000)
+Visit [http://localhost:3000](http://localhost:3000).
 
 ## 4. Start Transcribing
 
-1. Click "Browse Files" or drag and drop an audio file
-2. Wait for the file to load and preview
-3. Click "Transcribe" button
-4. Copy the transcription when ready
+1. Click "Browse Files" or drag and drop an audio file.
+2. Wait for the file to load and preview.
+3. Click "Find Gold".
+4. Wait while AssemblyAI uploads, queues, and processes the transcript.
+5. Copy the transcription or download detected clips when ready.
 
 ## Troubleshooting
 
-- If you get API key errors, make sure `.env.local` exists and contains your API key
-- Audio files must be under 25MB
-- Supported formats: MP3, WAV, M4A
-
-## Environment Variables
-
-Create a `.env.local` file with your OpenAI API key:
-
-```
-OPENAI_API_KEY=sk-your-api-key-here
-```
-
-This key is stored locally in your browser and never sent to any server except OpenAI.
+- If you get API key errors, make sure `.env.local` exists and contains `ASSEMBLYAI_API_KEY`.
+- Audio files can be up to AssemblyAI's 2.2 GB upload limit.
+- Supported formats: MP3, WAV, M4A, AAC.

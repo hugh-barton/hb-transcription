@@ -29,9 +29,20 @@ export interface TranscriptResult {
   segments?: Segment[];
 }
 
-export interface TranscriptionParams {
-  api_key: string;
-  model?: string;
-  language?: string;
-  response_format?: "json" | "text" | "srt" | "verbose_json";
+export interface TranscriptionJobStart {
+  transcriptId: string;
+  status: "queued" | "processing";
 }
+
+export type TranscriptionJobStatus =
+  | {
+      status: "queued" | "processing";
+    }
+  | {
+      status: "completed";
+      transcript: TranscriptResult;
+    }
+  | {
+      status: "error";
+      error: string;
+    };

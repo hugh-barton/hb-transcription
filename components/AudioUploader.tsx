@@ -15,6 +15,7 @@ interface AudioUploaderProps {
   onTranscribe: (file: File) => void;
   onReset: () => void;
   loading: boolean;
+  transcriptionStatus: string | null;
 }
 
 export default function AudioUploader({
@@ -25,6 +26,7 @@ export default function AudioUploader({
   onTranscribe,
   onReset,
   loading,
+  transcriptionStatus,
 }: AudioUploaderProps) {
   const [dragActive, setDragActive] = useState(false);
   const [showTranscript, setShowTranscript] = useState(false);
@@ -78,8 +80,8 @@ export default function AudioUploader({
         return;
       }
 
-      if (file.size > 25 * 1024 * 1024) {
-        alert("File size exceeds 25MB limit");
+      if (file.size > 2.2 * 1024 * 1024 * 1024) {
+        alert("File size exceeds AssemblyAI's 2.2 GB upload limit");
         return;
       }
 
@@ -221,6 +223,7 @@ export default function AudioUploader({
           transcript={transcript}
           error={error}
           loading={loading}
+          transcriptionStatus={transcriptionStatus}
           clipSuggestions={clipSuggestions}
           downloading={downloading}
           downloadFormats={downloadFormats}
@@ -314,7 +317,7 @@ function DefaultUploadState({
         </InfoPill>
         <span className="hidden h-8 w-px bg-border md:block" />
         <InfoPill icon={<ClockIcon className="h-5 w-5" />}>
-          Up to 25 MB
+          Up to 2.2 GB
         </InfoPill>
         <span className="hidden h-8 w-px bg-border md:block" />
         <InfoPill icon={<SparkleIcon className="h-5 w-5" />}>
@@ -330,6 +333,7 @@ function SessionWorkspace({
   transcript,
   error,
   loading,
+  transcriptionStatus,
   clipSuggestions,
   downloading,
   downloadFormats,
@@ -343,6 +347,7 @@ function SessionWorkspace({
   transcript: TranscriptResult | null;
   error: string | null;
   loading: boolean;
+  transcriptionStatus: string | null;
   clipSuggestions: ReturnType<typeof findClipSuggestions>;
   downloading: string | null;
   downloadFormats: Record<string, ClipDownloadFormat>;
@@ -357,6 +362,8 @@ function SessionWorkspace({
   onTranscribe: (file: File) => void;
   onViewTranscript: () => void;
 }) {
+  const isComplete = Boolean(transcript) && !loading;
+
   return (
     <div className="flex h-full flex-col gap-3 md:gap-4">
       <div className="flex items-center justify-between">
@@ -369,7 +376,7 @@ function SessionWorkspace({
           New Session
         </button>
 
-        {transcript && (
+        {isComplete && (
           <button
             type="button"
             onClick={onViewTranscript}
@@ -381,43 +388,43 @@ function SessionWorkspace({
         )}
       </div>
 
-      <div className="grid min-h-0 flex-1 gap-4 md:grid-cols-[0.88fr_1.12fr]">
-        <section className="flex min-h-0 flex-col gap-3">
+      {loading ? (
+        <div className="flex min-h-0 flex-1 items-center justify-center">
+          <StatusCard
+            icon={<SpinnerIcon className="h-5 w-5 animate-spin" />}
+            title={transcriptionStatus || "Preparing transcription"}
+            body="Goldfish is sending this session through AssemblyAI and checking for clip-worthy phrases."
+          />
+        </div>
+      ) : isComplete ? (
+        <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1">
+          <ClipStatusPanel
+            audioFile={audioFile}
+            transcript={transcript}
+            error={error}
+            loading={loading}
+            clipSuggestions={clipSuggestions}
+            downloading={downloading}
+            downloadFormats={downloadFormats}
+            onDownloadFormatChange={onDownloadFormatChange}
+            onDownloadClip={onDownloadClip}
+            onViewTranscript={onViewTranscript}
+          />
+        </div>
+      ) : (
+        <section className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col justify-center gap-4">
           <FileSummaryCard audioFile={audioFile} />
-          <CompactAudioPreview audioFile={audioFile} />
+          <AudioControls audioFile={audioFile} />
           <button
             type="button"
             onClick={() => onTranscribe(audioFile.file)}
-            disabled={loading}
-            className="primary-button soft-focus-ring inline-flex h-12 shrink-0 items-center justify-center gap-2 px-5 text-sm font-semibold disabled:opacity-60"
+            className="primary-button soft-focus-ring inline-flex h-12 shrink-0 items-center justify-center gap-2 px-5 text-sm font-semibold"
           >
-            {loading ? (
-              <>
-                <SpinnerIcon className="h-4 w-4 animate-spin" />
-                Transcribing
-              </>
-            ) : (
-              <>
-                <MicIcon className="h-4 w-4" />
-                Use Session
-              </>
-            )}
+            <SparkleIcon className="h-4 w-4" />
+            Find Gold
           </button>
         </section>
-
-        <ClipStatusPanel
-          audioFile={audioFile}
-          transcript={transcript}
-          error={error}
-          loading={loading}
-          clipSuggestions={clipSuggestions}
-          downloading={downloading}
-          downloadFormats={downloadFormats}
-          onDownloadFormatChange={onDownloadFormatChange}
-          onDownloadClip={onDownloadClip}
-          onViewTranscript={onViewTranscript}
-        />
-      </div>
+      )}
     </div>
   );
 }
@@ -441,7 +448,7 @@ function FileSummaryCard({ audioFile }: { audioFile: AudioFile }) {
   );
 }
 
-function CompactAudioPreview({ audioFile }: { audioFile: AudioFile }) {
+function AudioControls({ audioFile }: { audioFile: AudioFile }) {
   const audioUrl = useMemo(
     () => URL.createObjectURL(audioFile.file),
     [audioFile.file],
@@ -452,19 +459,8 @@ function CompactAudioPreview({ audioFile }: { audioFile: AudioFile }) {
   }, [audioUrl]);
 
   return (
-    <div className="min-h-0 flex-1 rounded-[16px] border border-border bg-surface p-4 shadow-[var(--shadow-card)]">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="truncate text-sm font-semibold text-text-primary">
-            Audio Preview
-          </h3>
-          <p className="text-xs text-text-muted">
-            {formatDuration(audioFile.duration)} session
-          </p>
-        </div>
-        <WaveIcon className="h-5 w-5 shrink-0 text-primary-hover" />
-      </div>
-      <audio src={audioUrl} controls className="audio-control w-full" />
+    <div className="flex min-h-0 flex-1 items-center rounded-[16px] border border-border bg-muted p-2 shadow-[var(--shadow-card)]">
+      <audio src={audioUrl} controls className="audio-control block w-full" />
     </div>
   );
 }
@@ -519,8 +515,8 @@ function ClipStatusPanel({
       ) : loading ? (
         <StatusCard
           icon={<SpinnerIcon className="h-5 w-5 animate-spin" />}
-          title="Listening for moments"
-          body="Goldfish is transcribing the session and checking for clip-worthy phrases."
+          title="AssemblyAI is transcribing"
+          body="Goldfish is checking this session for clip-worthy phrases."
         />
       ) : !transcript ? (
         <StatusCard
@@ -847,15 +843,6 @@ function SparkleIcon({ className }: { className?: string }) {
   );
 }
 
-function MicIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 14a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3Z" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 0 1-14 0m7 7v3m-4 0h8" />
-    </svg>
-  );
-}
-
 function SpinnerIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24">
@@ -878,18 +865,6 @@ function TextIcon({ className }: { className?: string }) {
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
       <path strokeLinecap="round" strokeLinejoin="round" d="M7 7h10M7 12h10M7 17h6" />
       <rect width="16" height="18" x="4" y="3" rx="2" />
-    </svg>
-  );
-}
-
-function WaveIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
-      <path strokeLinecap="round" d="M4 12v2" />
-      <path strokeLinecap="round" d="M8 7v10" />
-      <path strokeLinecap="round" d="M12 4v16" />
-      <path strokeLinecap="round" d="M16 8v8" />
-      <path strokeLinecap="round" d="M20 11v2" />
     </svg>
   );
 }

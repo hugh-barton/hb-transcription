@@ -2,7 +2,7 @@
 
 ## Overview
 
-Audio transcription web app built with Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS v4, and the OpenAI Whisper API. Users upload audio files (MP3, WAV, M4A, AAC), receive transcriptions, and can auto-clip highlighted moments via trigger-phrase detection and FFmpeg.
+Audio transcription web app built with Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS v4, and AssemblyAI pre-recorded speech-to-text. Users upload audio files (MP3, WAV, M4A, AAC), receive transcriptions, and can auto-clip highlighted moments via trigger-phrase detection and FFmpeg.
 
 ## Tech Stack
 
@@ -11,8 +11,9 @@ Audio transcription web app built with Next.js 16 (App Router), React 19, TypeSc
 | Framework | Next.js (App Router, Turbopack) | 16.2.4 |
 | UI | React | 19.2.4 |
 | Styling | Tailwind CSS (with `@tailwindcss/postcss`) | 4.x |
+| UI Primitives | ShadCN CLI (`base-nova` preset, Base UI primitives) | 4.6.x |
 | Language | TypeScript | 5.x |
-| Transcription | OpenAI Whisper API | whisper-1 |
+| Transcription | AssemblyAI pre-recorded STT | universal-3-pro with universal-2 fallback |
 | PostCSS | `@tailwindcss/postcss` (v4 plugin) | 4.x |
 
 ## Running Locally
@@ -26,10 +27,10 @@ npm run start    # production server at localhost:3000
 npm run lint     # eslint
 ```
 
-The OpenAI API key lives in `.env.local` (gitignored):
+The AssemblyAI API key lives in `.env.local` (gitignored):
 
 ```
-OPENAI_API_KEY=sk-...
+ASSEMBLYAI_API_KEY=...
 ```
 
 ## Architecture
@@ -40,61 +41,66 @@ OPENAI_API_KEY=sk-...
 app/
   layout.tsx           — Root layout, imports globals.css
   page.tsx             — Main page, orchestrates all components
-  globals.css          — Tailwind v4 @theme tokens (design system)
+  globals.css          — Tailwind v4 + ShadCN token setup
   api/
     transcribe/
-      route.ts         — POST endpoint, forwards audio to OpenAI Whisper
+      route.ts         — POST endpoint, uploads audio to AssemblyAI and starts a job
+      [id]/
+        route.ts       — GET endpoint, polls AssemblyAI and returns normalised transcript
     clip/
       route.ts         — POST endpoint, FFmpeg-based audio clipping
 
 components/
+  ui/                  — ShadCN-generated UI primitives
   AudioUploader.tsx    — Drag-and-drop + browse file upload
   AudioPlayer.tsx      — HTML5 audio playback with metadata display
   TranscriptDisplay.tsx— Transcript result with copy/clear + clip suggestions
-  SettingsPanel.tsx    — Model, language, response format config (modal content)
+  SettingsPanel.tsx    — AssemblyAI key note + optional language config (modal content)
 
 lib/
-  openai.ts            — transcribeAudio() — calls OpenAI API, handles all response formats
+  utils.ts             — ShadCN `cn()` helper (`clsx` + `tailwind-merge`)
+  assemblyai.ts        — AssemblyAI upload/submit/poll helpers + transcript normalisation
   triggers.ts          — Trigger phrase matching, ClipSuggestion generation
 
 types/
-  index.ts             — AudioFile, TranscriptResult, Segment, ClipSuggestion, TranscriptionParams
+  index.ts             — AudioFile, TranscriptResult, Segment, ClipSuggestion, job response types
 ```
 
 ### Data Flow
 
 1. User uploads audio via `AudioUploader` → `AudioFile` object created with file metadata and duration
-2. User clicks "Transcribe" → `page.tsx` constructs `FormData` with file + settings (model, language, response_format) and POSTs to `/api/transcribe`
-3. Server route reads `OPENAI_API_KEY` from env, passes file + params to `lib/openai.ts`
-4. `transcribeAudio()` calls OpenAI Whisper API, normalises the response into a `TranscriptResult` regardless of format. When `verbose_json` is used, the `segments` array (with per-segment timestamps) is included.
-5. Client receives JSON, displays via `TranscriptDisplay`
-6. If segments contain trigger phrases, clip suggestions appear. User clicks "Clip" → POST to `/api/clip` with the original file + start/end → FFmpeg trims → downloaded as MP3
+2. User clicks "Find Gold" → `page.tsx` sends the selected file as the raw request body to `/api/transcribe`, with optional language in the query string
+3. Server route reads `ASSEMBLYAI_API_KEY`, streams the file to AssemblyAI `/v2/upload`, then submits `/v2/transcript` with `speech_models: ["universal-3-pro", "universal-2"]`
+4. Client polls `/api/transcribe/[id]` while AssemblyAI returns `queued` or `processing`
+5. On completion, the polling route fetches `/v2/transcript/{id}` plus `/v2/transcript/{id}/sentences`, normalises sentence timestamps into the app's `Segment[]`, and returns `TranscriptResult`
+6. If segments contain trigger phrases, clip suggestions appear. User clicks "Clip" → POST to `/api/clip` with the original file + start/end → FFmpeg trims → downloaded as MP3/M4A
 
 ### Settings State Management
 
-Settings (model, language, responseFormat) are managed in `page.tsx` as lifted state, passed down to `SettingsPanel` as props. On change they are:
+Settings currently consist of optional language only. They are managed in `page.tsx` as lifted state, passed down to `SettingsPanel` as props. On change they are:
 - Updated in React state
 - Persisted to `localStorage` under `transcription_settings`
 
-The API key is stored separately in `localStorage` under `openai_api_key` via `SettingsPanel`. Currently the server reads the key from `.env.local` only — the client-stored key is not forwarded to the API route. This is a known gap (see Future Work below).
+The settings panel can store a local AssemblyAI key note under `assemblyai_api_key`, but the transcription route reads only from `.env.local`; browser-stored keys are not sent to the server.
 
 ### API Route — `/api/transcribe`
 
-- Reads file from FormData
-- Reads `OPENAI_API_KEY` from `process.env`
-- Reads optional `model`, `language`, `response_format` from FormData
-- Delegates to `transcribeAudio()` in `lib/openai.ts`
-- Returns JSON `TranscriptResult`
+- Reads the raw request body as audio
+- Reads `ASSEMBLYAI_API_KEY` from `process.env`
+- Reads optional `language` from the query string
+- Delegates upload and submit to `lib/assemblyai.ts`
+- Returns `{ transcriptId, status }`
 
-### OpenAI Integration — `lib/openai.ts`
+### API Route — `/api/transcribe/[id]`
 
-`transcribeAudio(file, apiKey, params)` handles all four Whisper response formats:
-- `verbose_json` (default) — returns text, duration, model, language, and **segments** array
-- `json` — returns text
-- `text` — plain text string
-- `srt` — subtitle format
+- Reads `ASSEMBLYAI_API_KEY` from `process.env`
+- Polls `GET /v2/transcript/{id}`
+- Returns pending statuses directly
+- On completion, fetches sentences and returns the app's normalised `TranscriptResult`
 
-The function normalises all formats into the same `TranscriptResult` shape. Non-JSON formats lose duration/language metadata and segments. **Clip suggestions only work with `verbose_json`** since segments are required for timestamps.
+### AssemblyAI Integration — `lib/assemblyai.ts`
+
+`startTranscriptionJob()` uploads raw audio to AssemblyAI, submits a transcript job, and returns the transcript ID. `getTranscriptionJobStatus()` polls the job, fetches sentence-level timing on completion, and normalises AssemblyAI's millisecond timestamps into the app's second-based `Segment` shape. **Clip suggestions depend on these normalised segments.**
 
 ### Settings Modal
 
@@ -102,15 +108,16 @@ Settings live in a modal (not inline). Opens via "Settings" button in the page h
 
 ### Trigger-Phrase Audio Clipper
 
-Uses Whisper's segment-level timestamps from `verbose_json` to auto-detect highlights and clip them.
+Uses AssemblyAI sentence-level timestamps to auto-detect highlights and clip them.
 
 **Trigger phrases** (defined in `lib/triggers.ts`): "that's gold", "thats gold", "clip that", "clip it", "that's perfect", "thats perfect", "beautiful", "that's the one", "thats the one", "save that", "save it", "that's a clip", "thats a clip", "gold".
 
 **Matching logic** (`findClipSuggestions`):
 - Case-insensitive substring match against each segment's text
 - Each segment can only match once (deduplicated by segment index)
-- Results sorted chronologically
-- Clip window: `max(0, match.start - 30s)` to `min(fileDuration, match.end + 30s)`
+- Individual trigger matches are sorted chronologically, then nearby matches are merged before final clips are returned
+- Triggers within 30 seconds of the latest trigger already in a group become one clip
+- Merged clip window: `max(0, earliestMatch.start - 30s)` to `min(fileDuration, latestMatch.end + 30s)`
 - Filename: slugified text from the matched segment +/- one neighbour segment (max 60 chars, `.mp3` extension)
 
 **Clip download flow**:
@@ -127,67 +134,80 @@ Uses Whisper's segment-level timestamps from `verbose_json` to auto-detect highl
 
 ## Design System
 
-Defined in `app/globals.css` using Tailwind v4 `@theme` blocks. Based on a custom dark-mode palette from a shared style guide (`~/Documents/General/Coding Projects/style-sheet.js`).
+Defined in `app/globals.css` using Tailwind v4 `@theme` blocks and ShadCN-compatible CSS variables. ShadCN is installed with `components.json`, `lib/utils.ts`, and generated primitives in `components/ui/`.
+
+### ShadCN UI Direction
+
+- Prefer ShadCN primitives for new design elements. Generated primitives live under `components/ui/`; keep app-specific composed components in `components/`.
+- Current ShadCN preset: `base-nova`, `rsc: true`, `tsx: true`, icon library `lucide`, Tailwind v4 config path intentionally blank in `components.json`.
+- Installed primitives: `button`, `card`, `dialog`, `badge`, `separator`, `select`, `input`, `label`, `textarea`, and `scroll-area`.
+- Add more primitives with `npx shadcn@latest add <component>`. Do not hand-roll a local primitive if an appropriate ShadCN primitive exists.
+- Use semantic classes/tokens (`bg-background`, `text-foreground`, `bg-card`, `border-border`, `bg-primary`, `text-primary-foreground`, `ring-ring`, `bg-muted`, `text-muted-foreground`) instead of one-off hex values.
+- Keep the current Goldfish aliases (`bg-surface`, `bg-surface-card`, `text-primary-hover`, `bg-primary-wash`, etc.) only for existing UI or app-specific brand states. New reusable primitives should use the ShadCN token names.
+- This repo uses Tailwind CSS v4 with no `tailwind.config.ts`; do not add Tailwind v3 configuration for ShadCN. Configure tokens through `app/globals.css`.
+- Preserve the existing `@import "tailwindcss"`, `@import "tw-animate-css"`, and `@import "shadcn/tailwind.css"` order in `globals.css`.
+- If the CLI updates theme variables, map them back into the Goldfish `:root` palette rather than accepting the neutral default palette.
 
 ### Colour Tokens
 
-| Token | Hex | Usage |
+| ShadCN Token | Hex | Current Usage |
 |---|---|---|
-| `ink100` | `#0E0E10` | Page background (OLED-safe) |
-| `ink200` | `#141416` | Input fields, metadata cards |
-| `ink300` | `#1C1C1F` | Card/panel surfaces |
-| `ink400` | `#2A2A2E` | Elevated surfaces |
-| `ink500` | `#3A3A3F` | Borders, separators |
-| `ink600` | `#5A5A62` | Secondary text |
-| `ink700` | `#8A8A96` | Tertiary text, captions |
-| `ink800` | `#C4C4CC` | Primary body text |
-| `ink900` | `#F0F0F4` | Headings, high-emphasis text |
-| `sapphire300` | `#5B7FA6` | Accent labels, focus rings |
-| `sapphire400` | `#4A6D94` | Hover states |
-| `sapphire500` | `#3A5A82` | Primary buttons, active states |
-| `sapphire600` | `#2E4A6E` | Active button borders |
-| `emerald` | `#52B88E` | Transcribe button, success states |
-| `rose` | `#D07080` | Error panel, clear/delete buttons |
-| `amber` | `#D4953A` | Warning/hint states (defined but unused) |
+| `background` | `#FFF8EF` | Page background |
+| `foreground` | `#111827` | Primary text |
+| `card` | `#FFFDF9` | Card/panel surfaces |
+| `popover` | `#FFFCF7` | Elevated/modal/input surfaces |
+| `primary` | `#F97316` | Main actions |
+| `primary-foreground` | `#FFFFFF` | Text/icons on primary actions |
+| `secondary` | `#FFF1E3` | Secondary warm surfaces |
+| `muted` | `#FFF7ED` | Muted backgrounds and audio controls |
+| `muted-foreground` | `#8A8178` | Tertiary text/captions |
+| `accent` | `#FFE8D1` | Soft highlight states |
+| `accent-foreground` | `#EA580C` | Text on accent surfaces |
+| `destructive` | `#D07080` | Error/delete states |
+| `border` / `input` | `#EADFD3` | Borders, separators, input outlines |
+| `ring` | `#F97316` | Focus rings |
 
 ### Typography
 
-- **Display (headings)**: `Georgia, "Times New Roman", serif` — applied via `font-[family-name:var(--font-display)]`
-- **Body**: `"DM Sans", system-ui, -apple-system, sans-serif` — set on `<body>` via `globals.css`
+- **Display (brand/headings)**: `Playfair Display`, falling back to `Georgia, "Times New Roman", serif` — applied via `font-[family-name:var(--font-display)]`
+- **Body/UI**: `Inter`, falling back to `system-ui, -apple-system, sans-serif` — set on `<body>` via `globals.css`
+- **Handwritten accent**: `Caveat`, available as `var(--font-hand)` for brand accents only
 
 ### Border Radius Convention
 
-- `rounded-[14px]` — buttons, inputs, inner cards
-- `rounded-[20px]` — outer card panels, uploader, settings panel
-- `rounded-full` — play/pause button only
+- ShadCN semantic radius starts at `--radius: 16px` and exposes `--radius-sm`, `--radius-md`, `--radius-lg`, and `--radius-xl` through Tailwind v4.
+- App-specific existing radii remain acceptable: `rounded-[14px]` for buttons/inputs, `rounded-[16px]` for cards/subcards, `rounded-[24px]` for the top fixed session card and modals.
 
 ### Tailwind v4 Notes
 
 - No `tailwind.config.ts` — all tokens defined via `@theme` in `globals.css`
 - PostCSS config is `postcss.config.mjs` using `@tailwindcss/postcss` (not `tailwindcss` directly)
 - Use `@import "tailwindcss"` instead of `@tailwind base/components/utilities`
-- Custom colours are available as utility classes: `bg-ink300`, `text-sapphire300`, etc.
+- ShadCN's Tailwind v4 support adds `@import "tw-animate-css"`, `@import "shadcn/tailwind.css"`, `@custom-variant dark`, and `@theme inline`
+- ShadCN-compatible colours are available as utility classes: `bg-background`, `text-foreground`, `bg-card`, `text-card-foreground`, `bg-primary`, `text-primary-foreground`, `border-border`, `ring-ring`, etc.
 
 ## Key Decisions & Gotchas
 
 - **Tailwind v3 vs v4**: This project was initially scaffolded with v3 conventions (`tailwind.config.ts`, `@tailwind` directives, `postcss.config.js`). These were migrated to v4. Do not reintroduce v3 patterns.
 - **No `tailwind.config.ts`**: It was removed. All theme tokens live in `globals.css` `@theme`.
+- **ShadCN is installed**: Use `components.json` and `npx shadcn@latest add <component>` for additional primitives. Keep generated primitives in `components/ui/`.
 - **Only `postcss.config.mjs`**: A `postcss.config.js` using the old `tailwindcss` plugin existed and caused build errors. Do not recreate it.
 - **Development bundler**: Next.js 16 uses Turbopack by default, but this machine has shown runaway Node process spawning on the first browser request under Turbopack. `npm run dev` uses `next dev --webpack` as a stable local fallback. Use `npm run dev:turbo` only when testing Turbopack-specific behavior.
 - **Turbopack root**: `next.config.ts` explicitly sets `turbopack.root` to the repository root. This avoids Next inferring `/Users/hughbarton` because that parent directory also contains a `package-lock.json`, which would expand filesystem watching.
 - **Object URL memory leaks**: `AudioPlayer` uses `useMemo` + cleanup `useEffect` to revoke blob URLs. If you add more `createObjectURL` calls, always pair with `revokeObjectURL`.
 - **SSR and localStorage**: `SettingsPanel` reads localStorage in `useEffect` (not at module/component level) to avoid SSR errors. Any new localStorage access must follow this pattern.
 - **Function ordering**: `AudioUploader` had `handleDrop` defined before `handleFileSelect` causing a TypeScript "used before declaration" error. Keep `handleFileSelect` above `handleDrop`.
-- **Response format default**: Defaults to `verbose_json` to get duration, language, and model back from OpenAI. `text` format strips metadata.
+- **AssemblyAI job flow**: `/api/transcribe` starts the job and `/api/transcribe/[id]` polls. Keep this split so long audio does not depend on one long transcription request.
+- **AssemblyAI auth**: REST requests use `Authorization: ASSEMBLYAI_API_KEY` with no `Bearer` prefix.
+- **AssemblyAI timestamps**: Sentence timestamps are returned in milliseconds and normalised to seconds before clip detection.
 
 ## Future Work / Known Gaps
 
-1. **Client API key passthrough**: The settings panel lets users save an API key to localStorage, but `/api/transcribe` reads exclusively from `process.env.OPENAI_API_KEY`. To support client-provided keys, the route would need to accept the key from the request body or a header (with appropriate security considerations).
-2. **File size chunking**: OpenAI Whisper has a 25MB limit. Large files could be auto-split into segments before upload.
+1. **Client API key passthrough**: The settings panel lets users save an API key to localStorage, but `/api/transcribe` reads exclusively from `process.env.ASSEMBLYAI_API_KEY`. To support client-provided keys, the route would need to accept the key from the request body or a header with appropriate security considerations.
+2. **Direct-to-storage upload path**: Proxying 1-2 GB files through the Next server works locally but may not fit all hosted deployment limits. A future production path could upload to object storage first and submit a URL to AssemblyAI.
 3. **Light mode**: The design system defines light-mode tokens (stone*, ink900 as text on white) but the app is dark-mode only. A `useColorScheme` toggle could be added.
-4. **Progress indication**: The transcription request can be slow for long audio. A progress bar or polling mechanism would improve UX.
+4. **Progress indication**: Polling shows job status, but upload percentage and estimated completion time would improve long-session UX.
 5. **Batch transcription**: Support uploading multiple files at once.
 6. **Export formats**: Allow downloading transcript as .txt, .srt, or .json files.
-7. **Clip format preservation**: Clips are intentionally output as `.mp3` for browser preview compatibility. If format preservation is needed later, add a separate download format option rather than changing preview output.
-8. **Overlapping clip windows**: If two triggers are within 30s of each other, their clip windows will overlap. Could merge into a single clip or warn the user.
-9. **FFmpeg path portability**: Hardcoded to `/opt/homebrew/bin/ffmpeg`. On Linux or other machines this path differs. Should detect or make configurable.
+7. **Clip format preservation**: Clips are intentionally output as `.mp3`/`.m4a` for browser preview compatibility. If broader format preservation is needed later, add a separate download format option.
+8. **FFmpeg path portability**: Hardcoded to `/opt/homebrew/bin/ffmpeg`. On Linux or other machines this path differs. Should detect or make configurable.

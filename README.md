@@ -1,20 +1,20 @@
 # Audio Transcription App
 
-A simple and elegant audio transcription app built with Next.js and OpenAI Whisper API.
+A simple audio transcription app built with Next.js and AssemblyAI. Upload long music sessions, transcribe them with AssemblyAI pre-recorded speech-to-text, and auto-detect clip-worthy moments from trigger phrases.
 
 ## Features
 
-- **Multi-format Support**: Upload MP3, WAV, or M4A audio files
-- **Client-side Processing**: All transcription happens in your browser
-- **Audio Preview**: Preview audio before and after transcription
-- **Clean UI**: Modern, responsive design with Tailwind CSS
-- **Settings Management**: Configure API keys and model parameters
-- **Copy to Clipboard**: Easily copy transcriptions for sharing
+- **Large session uploads**: Supports files up to AssemblyAI's 2.2 GB upload limit
+- **Multi-format support**: Upload MP3, WAV, M4A, or AAC audio files
+- **Job-based transcription**: Uploads, submits, and polls AssemblyAI transcript jobs
+- **Audio preview**: Preview audio before transcription
+- **Clip detection**: Finds trigger phrases and generates downloadable audio clips
+- **Copy to clipboard**: Copy completed transcripts for sharing
 
 ## Prerequisites
 
 - Node.js 18+ installed
-- OpenAI API key (get one at [platform.openai.com](https://platform.openai.com))
+- AssemblyAI API key from [assemblyai.com/dashboard/api-keys](https://www.assemblyai.com/dashboard/api-keys)
 
 ## Installation
 
@@ -23,101 +23,46 @@ A simple and elegant audio transcription app built with Next.js and OpenAI Whisp
    npm install
    ```
 
-2. Set your OpenAI API key:
-   - Copy `.env.local.example` to `.env.local` (or create `.env.local` manually)
-   - Add your OpenAI API key:
-     ```
-     OPENAI_API_KEY=sk-your-actual-api-key-here
+2. Set your AssemblyAI API key:
+   - Copy `.env.local.example` to `.env.local`
+   - Add your API key:
+     ```bash
+     ASSEMBLYAI_API_KEY=your-assemblyai-api-key-here
      ```
 
 ## Running the App
 
-1. Start the development server:
-   ```bash
-   npm run dev
-   ```
+```bash
+npm run dev
+```
 
-2. Open [http://localhost:3000](http://localhost:3000) in your browser
-
-3. Upload an audio file and click "Transcribe" to get started
+Open [http://localhost:3000](http://localhost:3000), upload an audio file, and click "Find Gold".
 
 ## Configuration
 
-### API Key
-
-- Enter your OpenAI API key in the Settings panel
-- Key is stored locally in your browser (localStorage)
-- Never sent to any server except OpenAI
-
-### Model Selection
-
-- **whisper-1** (default): Good balance of accuracy and speed
-- **whisper-1-large-v2**: More accurate but slower
-
-### Language Detection
-
-- Optional: Specify language code (en, es, fr, de, etc.) to improve accuracy
-- Leave empty for automatic detection
-
-### Response Format
-
-- **text**: Plain text output (recommended for reading)
-- **json**: Structured JSON output (for programmatic access)
-- **srt**: Subtitle format
-- **verbose_json**: Detailed JSON with timestamps and more info
-
-## Usage
-
-1. **Upload**: Drag and drop or click "Browse Files" to select an audio file
-2. **Preview**: Click the play button to preview your audio
-3. **Transcribe**: Click the "Transcribe" button to process the audio
-4. **Review**: Read and copy your transcription from the result panel
-5. **Clear**: Click the trash icon to clear results and start fresh
+- The transcription route reads `ASSEMBLYAI_API_KEY` from `.env.local`.
+- The settings modal includes an optional language code. Leave it empty to let AssemblyAI route the transcription automatically.
+- The active speech model list is `universal-3-pro` with `universal-2` fallback.
 
 ## Supported Formats
 
-- MP3 (.mp3)
-- WAV (.wav)
-- M4A (.m4a)
-- AAC (.aac)
-
-## File Size Limit
-
-Files must be under 25MB. Larger files will be rejected.
-
-## Pricing
-
-OpenAI Whisper pricing:
-- ~$0.006 per minute of audio
-- Free tier includes 60 minutes of transcription
+- MP3
+- WAV
+- M4A
+- AAC
 
 ## Development
 
 The app is built with:
-- Next.js 16+ (App Router)
+
+- Next.js 16 App Router
 - React 19
 - TypeScript
-- Tailwind CSS
-- OpenAI API
+- Tailwind CSS v4
+- AssemblyAI pre-recorded STT
 
 ## Troubleshooting
 
-### API Key Issues
-- Ensure your API key is valid and has credits
-- Check that the API key is saved in the Settings panel
-- Verify the API key format: `sk-...`
-
-### File Upload Issues
-- Ensure the file is in a supported format (MP3, WAV, M4A)
-- Check file size (under 25MB)
-- Try uploading a different file
-
-### Transcription Errors
-- Check your internet connection
-- Verify API key has sufficient credits
-- Try re-uploading the file
-- Check the console for detailed error messages
-
-## License
-
-This project is open source and available for personal and commercial use.
+- If you get API key errors, make sure `.env.local` exists and contains `ASSEMBLYAI_API_KEY`.
+- If transcription fails, check that your AssemblyAI account has access and balance.
+- Supported upload size is up to 2.2 GB via AssemblyAI's upload endpoint.
