@@ -102,7 +102,7 @@ types/
 8. Client polls `/api/transcribe/[id]` every 3 seconds while AssemblyAI returns `queued` or `processing`.
 9. The loading state displays directly on the ripple background with a looping progress bar and rotating music/gold-themed messages.
 10. On completion, the polling route fetches transcript and sentence data, normalizes AssemblyAI millisecond timestamps into second-based `Segment[]`, and returns `TranscriptResult`.
-11. `AudioUploader` detects clip-worthy moments from trigger phrases, shows the **Exciting Moments** results panel, and lets users preview/download clips as M4A or MP3.
+11. `AudioUploader` detects clip-worthy moments from trigger phrases, shows the **Gold Moment(s)** results page, and lets users preview/download clips as M4A or MP3.
 
 ## Main UI States
 
@@ -110,7 +110,7 @@ types/
 
 - Large dashed panel with `assets/water-ripples.png` as a CSS background.
 - Centered document/audio icon, headline **“Ready to find your next exciting moment?”**, upload CTA, drag/drop hint, and capability pills.
-- The lower placeholder **Recent Sessions** and homepage **Exciting Moments** cards were removed. Clip results still appear after transcription.
+- The lower placeholder **Recent Sessions** and homepage **Exciting Moments** cards were removed. Gold Moment results still appear after transcription.
 
 ### Uploaded File Review State
 
@@ -140,7 +140,11 @@ types/
 
 - Shows **New Session** and **View Transcript** actions.
 - Transcript opens in a modal with copy support.
-- Clip suggestions appear in the **Exciting Moments** panel with quote, trigger, timestamp range, clip preview, and MP3/M4A download controls.
+- Clip suggestions appear in a full-width **Gold Moment** / **Gold Moments** results page.
+- The top summary card says **“We found 1 gold moment!”** or **“We found n gold moments!”**, shows the uploaded session filename/metadata, includes a decorative waveform, and has a presentational **View Full Session** button.
+- Each moment card shows the native browser clip preview from `ClipPreview`, the matched transcript text, the timestamp and clip length, a working download button, an MP3/M4A selector, and a presentational kebab menu.
+- The old peak score, trigger phrase label, and **Add to Session** action are intentionally omitted from the results cards.
+- Results include a **Help us get smarter** feedback banner with a presentational **Rate Moment** button and keep the **Your audio is private and secure** footer.
 
 ## API Routes
 

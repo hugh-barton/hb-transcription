@@ -166,10 +166,10 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen bg-background text-text-primary">
-      <div className="grid min-h-screen lg:grid-cols-[280px_1fr]">
-        <aside className="hidden border-r border-border bg-sidebar px-4 py-7 lg:flex lg:flex-col">
-          <div className="mb-12 flex items-center gap-3 px-2">
+    <main className="min-h-screen bg-background text-text-primary lg:h-screen lg:overflow-hidden">
+      <div className="grid min-h-screen lg:h-screen lg:min-h-0 lg:grid-cols-[280px_1fr]">
+        <aside className="hidden border-r border-border bg-sidebar px-4 py-5 lg:flex lg:h-screen lg:flex-col lg:overflow-hidden">
+          <div className="mb-9 flex items-center gap-3 px-2">
             <Image
               src={goldfishIcon}
               alt=""
@@ -183,7 +183,7 @@ export default function Home() {
             </span>
           </div>
 
-          <nav className="space-y-3" aria-label="Placeholder navigation">
+          <nav className="space-y-2" aria-label="Placeholder navigation">
             {navItems.map((item) => {
               const Icon = item.icon;
 
@@ -191,7 +191,7 @@ export default function Home() {
                 <button
                   key={item.label}
                   type="button"
-                  className={`flex w-full items-center gap-4 rounded-[14px] px-4 py-4 text-left text-base font-medium transition-colors ${
+                  className={`flex w-full items-center gap-4 rounded-[14px] px-4 py-3.5 text-left text-base font-medium transition-colors ${
                     item.active
                       ? "bg-primary-soft text-primary-hover"
                       : "text-text-secondary hover:bg-primary-wash"
@@ -207,7 +207,7 @@ export default function Home() {
           <button
             type="button"
             onClick={() => setShowSettings(true)}
-            className="mt-auto flex w-full items-center gap-4 rounded-[14px] px-4 py-4 text-left text-base font-medium text-text-secondary transition-colors hover:bg-primary-wash hover:text-primary-hover"
+            className="mt-auto flex w-full items-center gap-4 rounded-[14px] px-4 py-3.5 text-left text-base font-medium text-text-secondary transition-colors hover:bg-primary-wash hover:text-primary-hover"
           >
             <span className="flex h-5 w-5 shrink-0 items-center justify-center">
               <SettingsIcon className="h-5 w-5" />
@@ -216,7 +216,7 @@ export default function Home() {
           </button>
         </aside>
 
-        <section className="min-w-0">
+        <section className="min-w-0 lg:flex lg:h-screen lg:flex-col lg:overflow-hidden">
           <header className="flex items-center justify-between border-b border-border bg-surface/80 px-4 py-4 backdrop-blur md:px-8 lg:justify-end lg:px-9">
             <div className="flex items-center gap-2 lg:hidden">
               <Image
@@ -253,9 +253,9 @@ export default function Home() {
             </div>
           </header>
 
-          <div className="px-4 py-6 md:px-8 lg:px-9">
+          <div className="min-h-0 px-4 py-4 md:px-8 lg:flex-1 lg:px-9">
             <section
-              className="min-h-[650px] overflow-hidden rounded-[24px] border border-dashed border-primary/60 bg-card p-4 shadow-[var(--shadow-soft)] md:p-7 lg:min-h-[calc(100vh-150px)] lg:p-9"
+              className="min-h-[650px] overflow-hidden rounded-[24px] border border-dashed border-primary/60 bg-card p-4 shadow-[var(--shadow-soft)] md:p-7 lg:h-full lg:min-h-0 lg:p-6"
               style={{
                 backgroundImage: `url(${waterRipples.src})`,
                 backgroundPosition: "center",

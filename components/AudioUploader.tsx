@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  AudioLines,
   Clock3,
+  EllipsisVertical,
   FileAudio,
   Folder,
   Lock,
@@ -260,7 +262,7 @@ export default function AudioUploader({
       onDragLeave={handleDrag}
       onDragOver={handleDrag}
       onDrop={handleDrop}
-      className={`relative min-h-[590px] rounded-[20px] transition-colors md:min-h-[560px] lg:min-h-[calc(100vh-222px)] ${
+      className={`relative min-h-[590px] rounded-[20px] transition-colors md:min-h-[560px] lg:h-full lg:min-h-0 ${
         dragActive ? "bg-primary-wash/70" : "bg-transparent"
       }`}
     >
@@ -431,7 +433,11 @@ function SessionWorkspace({
   return (
     <div className="flex min-h-[inherit] flex-col gap-3 md:gap-4">
       {(loading || isComplete) && (
-        <div className="flex items-center justify-between">
+        <div
+          className={`z-10 flex items-center justify-between ${
+            loading ? "absolute left-0 right-0 top-0" : ""
+          }`}
+        >
           <button
             type="button"
             onClick={onReset}
@@ -457,12 +463,11 @@ function SessionWorkspace({
       {loading ? (
         <TranscriptionLoadingState status={transcriptionStatus} />
       ) : isComplete ? (
-        <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1">
-          <ClipStatusPanel
+        <div className="mx-auto flex min-h-0 w-full flex-1">
+          <GoldMomentResultsPage
             audioFile={audioFile}
             transcript={transcript}
             error={error}
-            loading={loading}
             clipSuggestions={clipSuggestions}
             downloading={downloading}
             downloadFormats={downloadFormats}
@@ -497,7 +502,7 @@ function TranscriptionLoadingState({ status }: { status: string | null }) {
   }, []);
 
   return (
-    <section className="flex min-h-0 flex-1 items-center justify-center px-2 py-12">
+    <section className="absolute inset-0 flex items-center justify-center px-6 py-12">
       <div className="w-full max-w-4xl text-center">
         <p className="font-[family-name:var(--font-display)] text-3xl font-bold leading-tight text-text-primary md:text-[38px]">
           {TRANSCRIPTION_LOADING_MESSAGES[messageIndex]}
@@ -534,35 +539,35 @@ function FileReviewScreen({
   ].filter((item) => item && item !== "Unknown");
 
   return (
-    <section className="mx-auto flex min-h-[inherit] w-full max-w-6xl flex-col justify-center py-4">
+    <section className="mx-auto flex min-h-[inherit] w-full max-w-6xl flex-col justify-center py-2 lg:h-full lg:min-h-0">
       <div className="mx-auto flex max-w-2xl flex-col items-center text-center">
-        <div className="mb-5 flex h-[72px] w-[72px] items-center justify-center rounded-full bg-primary-wash/90 text-primary-hover shadow-[0_14px_30px_rgba(249,115,22,0.08)]">
-          <AudioDocumentIcon className="h-10 w-10" />
+        <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-primary-wash/90 text-primary-hover shadow-[0_14px_30px_rgba(249,115,22,0.08)]">
+          <AudioDocumentIcon className="h-8 w-8" />
         </div>
-        <h1 className="font-[family-name:var(--font-display)] text-3xl font-bold leading-tight text-text-primary md:text-[36px]">
+        <h1 className="font-[family-name:var(--font-display)] text-3xl font-bold leading-tight text-text-primary md:text-[34px]">
           We&apos;ve got your file!
         </h1>
-        <p className="mt-3 text-base text-text-secondary md:text-lg">
+        <p className="mt-2 text-base text-text-secondary">
           Review your session details before we get started.
         </p>
       </div>
 
-      <div className="mx-auto mt-7 w-full max-w-5xl rounded-[18px] border border-border/90 bg-surface/72 p-5 shadow-[var(--shadow-card)] backdrop-blur-sm md:p-7">
-        <div className="flex flex-col gap-6 border-b border-border pb-6 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex min-w-0 items-center gap-5">
-            <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-[12px] bg-primary-wash text-primary-hover">
-              <MusicIcon className="h-12 w-12" />
+      <div className="mx-auto mt-5 w-full max-w-5xl rounded-[18px] border border-border/90 bg-surface/72 p-5 shadow-[var(--shadow-card)] backdrop-blur-sm">
+        <div className="flex flex-col gap-4 border-b border-border pb-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex min-w-0 items-center gap-4">
+            <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-[12px] bg-primary-wash text-primary-hover">
+              <MusicIcon className="h-10 w-10" />
             </div>
             <div className="min-w-0">
-              <h2 className="truncate text-xl font-semibold text-text-primary md:text-2xl">
+              <h2 className="truncate text-lg font-semibold text-text-primary md:text-xl">
                 {audioFile.name}
               </h2>
-              <p className="mt-3 text-sm text-text-secondary">
+              <p className="mt-2 text-sm text-text-secondary">
                 {summaryMetadata.length > 0
                   ? summaryMetadata.join("  ·  ")
                   : "Audio file"}
               </p>
-              <p className="mt-3 text-sm text-text-muted">
+              <p className="mt-2 text-sm text-text-muted">
                 {formatFileDate(audioFile.lastModified)}
                 <span className="mx-2">·</span>
                 {formatReviewDuration(audioFile.duration)}
@@ -572,19 +577,19 @@ function FileReviewScreen({
             </div>
           </div>
 
-          <div className="flex min-w-0 flex-1 items-center gap-5 lg:max-w-[520px]">
+          <div className="flex min-w-0 flex-1 items-center gap-4 lg:max-w-[480px]">
             <DecorativeWaveform />
             <button
               type="button"
-              className="soft-focus-ring flex h-14 w-14 shrink-0 items-center justify-center rounded-[12px] bg-primary-wash text-primary-hover transition-colors hover:bg-primary-soft"
+              className="soft-focus-ring flex h-12 w-12 shrink-0 items-center justify-center rounded-[12px] bg-primary-wash text-primary-hover transition-colors hover:bg-primary-soft"
               aria-label="Audio preview placeholder"
             >
-              <Play className="h-6 w-6 fill-current" aria-hidden="true" />
+              <Play className="h-5 w-5 fill-current" aria-hidden="true" />
             </button>
           </div>
         </div>
 
-        <div className="grid gap-x-12 pt-6 md:grid-cols-2">
+        <div className="grid gap-x-12 pt-4 md:grid-cols-2">
           <div>
             <SessionDetailRow
               icon={<FileAudio className="h-4 w-4" />}
@@ -624,10 +629,10 @@ function FileReviewScreen({
         </div>
       </div>
 
-      <div className="mx-auto mt-5 flex w-full max-w-5xl items-center justify-between gap-4 rounded-[14px] border border-border bg-primary-wash/45 p-5 text-sm text-text-secondary">
-        <div className="flex items-start gap-4">
+      <div className="mx-auto mt-4 flex w-full max-w-5xl items-center justify-between gap-4 rounded-[14px] border border-border bg-primary-wash/45 px-5 py-3.5 text-sm text-text-secondary">
+        <div className="flex items-start gap-3">
           <Sparkles
-            className="mt-0.5 h-6 w-6 shrink-0 text-primary-hover"
+            className="mt-0.5 h-5 w-5 shrink-0 text-primary-hover"
             aria-hidden="true"
           />
           <p>
@@ -643,19 +648,19 @@ function FileReviewScreen({
         </button>
       </div>
 
-      <div className="mt-8 flex flex-col items-center gap-4">
-        <div className="flex w-full max-w-xl flex-col gap-4 sm:flex-row">
+      <div className="mt-5 flex flex-col items-center gap-3">
+        <div className="flex w-full max-w-xl flex-col gap-3 sm:flex-row">
           <button
             type="button"
             onClick={onChooseDifferentFile}
-            className="soft-focus-ring inline-flex h-14 flex-1 items-center justify-center rounded-[12px] border border-border bg-surface/80 px-6 text-base font-semibold text-text-primary shadow-[var(--shadow-card)] transition-colors hover:bg-primary-wash"
+            className="soft-focus-ring inline-flex h-12 flex-1 items-center justify-center rounded-[12px] border border-border bg-surface/80 px-6 text-base font-semibold text-text-primary shadow-[var(--shadow-card)] transition-colors hover:bg-primary-wash"
           >
             Choose a Different File
           </button>
           <button
             type="button"
             onClick={onFindGold}
-            className="primary-button soft-focus-ring inline-flex h-14 flex-1 items-center justify-center gap-2 px-6 text-base font-semibold"
+            className="primary-button soft-focus-ring inline-flex h-12 flex-1 items-center justify-center gap-2 px-6 text-base font-semibold"
           >
             <SparkleIcon className="h-4 w-4" />
             Find Gold
@@ -673,7 +678,7 @@ function FileReviewScreen({
 function DecorativeWaveform() {
   return (
     <div
-      className="flex h-24 min-w-0 flex-1 items-center justify-center gap-[3px] overflow-hidden text-primary"
+      className="flex h-20 min-w-0 flex-1 items-center justify-center gap-[3px] overflow-hidden text-primary"
       aria-hidden="true"
     >
       {WAVEFORM_BARS.map((height, index) => (
@@ -700,11 +705,11 @@ function SessionDetailRow({
 }) {
   return (
     <div
-      className={`flex items-center gap-4 py-4 ${
+      className={`flex items-center gap-4 py-3 ${
         isLast ? "" : "border-b border-border"
       }`}
     >
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-wash/70 text-text-secondary">
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-wash/70 text-text-secondary">
         {icon}
       </span>
       <span className="min-w-0 flex-1 font-semibold text-text-primary">
@@ -715,11 +720,10 @@ function SessionDetailRow({
   );
 }
 
-function ClipStatusPanel({
+function GoldMomentResultsPage({
   audioFile,
   transcript,
   error,
-  loading,
   clipSuggestions,
   downloading,
   downloadFormats,
@@ -730,7 +734,6 @@ function ClipStatusPanel({
   audioFile: AudioFile;
   transcript: TranscriptResult | null;
   error: string | null;
-  loading: boolean;
   clipSuggestions: ReturnType<typeof findClipSuggestions>;
   downloading: string | null;
   downloadFormats: Record<string, ClipDownloadFormat>;
@@ -743,18 +746,71 @@ function ClipStatusPanel({
   ) => void;
   onViewTranscript: () => void;
 }) {
+  const momentCount = clipSuggestions.length;
+  const momentLabel = getGoldMomentLabel(momentCount);
+  const sessionMetadata = [
+    audioFile.format || getFileFormat(audioFile),
+    formatSampleRate(audioFile.sampleRate),
+    formatChannels(audioFile.channels),
+    formatReviewDuration(audioFile.duration),
+  ].filter((item) => item && item !== "Unknown");
+
   return (
-    <section className="flex min-h-0 flex-col rounded-[16px] border border-border bg-surface p-4 shadow-[var(--shadow-card)]">
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-base font-semibold text-text-primary">
-            Exciting Moments
-          </h2>
-          <p className="mt-1 text-sm text-text-muted">
-            {getClipPanelSubtitle(loading, transcript, clipSuggestions.length)}
-          </p>
+    <section className="flex min-h-0 w-full flex-col gap-6 overflow-auto pb-2 pt-9">
+      <div className="rounded-[18px] border border-border bg-surface/78 p-5 shadow-[var(--shadow-card)] backdrop-blur-sm md:p-7">
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex min-w-0 flex-col gap-5 sm:flex-row sm:items-center">
+            <span className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full border border-primary/25 bg-surface text-primary-hover shadow-[0_14px_30px_rgba(249,115,22,0.08)]">
+              <SparkleIcon className="h-10 w-10" />
+            </span>
+            <div className="min-w-0">
+              <h1 className="font-[family-name:var(--font-display)] text-3xl font-bold leading-tight text-text-primary md:text-[34px]">
+                We found {momentCount} {momentLabel.toLowerCase()}!
+              </h1>
+              <p className="mt-2 text-base leading-relaxed text-text-secondary">
+                {momentCount === 1
+                  ? "Here's the golden moment Goldfish found in your session."
+                  : "Here are the golden moments Goldfish found in your session."}
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            className="soft-focus-ring inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-[12px] border border-border bg-surface px-5 text-sm font-semibold text-text-primary transition-colors hover:bg-primary-wash"
+          >
+            <AudioLines className="h-4 w-4" aria-hidden="true" />
+            View Full Session
+          </button>
         </div>
-        {loading && <SpinnerIcon className="h-5 w-5 animate-spin text-primary-hover" />}
+
+        <div className="mt-7 flex flex-col gap-5 border-t border-border pt-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex min-w-0 items-center gap-4">
+            <span className="flex h-20 w-20 shrink-0 items-center justify-center rounded-[12px] bg-primary-wash text-primary-hover">
+              <MusicIcon className="h-10 w-10" />
+            </span>
+            <div className="min-w-0">
+              <h2 className="truncate text-lg font-semibold text-text-primary">
+                {audioFile.name}
+              </h2>
+              <p className="mt-2 text-sm text-text-secondary">
+                {sessionMetadata.length > 0
+                  ? sessionMetadata.join("  ·  ")
+                  : "Audio file"}
+              </p>
+              <p className="mt-2 text-sm text-text-muted">
+                {formatFileDate(audioFile.lastModified)}
+                <span className="mx-2">·</span>
+                {formatSize(audioFile.size)}
+              </p>
+            </div>
+          </div>
+          <div className="hidden min-w-0 flex-1 items-center justify-end lg:flex">
+            <div className="w-full max-w-[460px] text-primary/85">
+              <DecorativeWaveform />
+            </div>
+          </div>
+        </div>
       </div>
 
       {error ? (
@@ -762,106 +818,165 @@ function ClipStatusPanel({
           <h3 className="mb-1 text-sm font-semibold text-danger">Error</h3>
           <p className="text-sm text-text-secondary">{error}</p>
         </div>
-      ) : loading ? (
-        <StatusCard
-          icon={<SpinnerIcon className="h-5 w-5 animate-spin" />}
-          title="AssemblyAI is transcribing"
-          body="Goldfish is checking this session for clip-worthy phrases."
-        />
       ) : !transcript ? (
         <StatusCard
           icon={<SparkleIcon className="h-5 w-5" />}
-          title="Ready for clips"
+          title="Ready for gold moments"
           body="Use this session to find highlights and generate clip previews."
         />
       ) : clipSuggestions.length === 0 ? (
-        <div className="space-y-3">
+        <div className="rounded-[16px] border border-border bg-surface-card p-5 shadow-[var(--shadow-card)]">
           <StatusCard
             icon={<SearchIcon className="h-5 w-5" />}
-            title="No clips found"
+            title="No gold moments found"
             body="No trigger phrases were detected, but the full transcript is available."
           />
           <button
             type="button"
             onClick={onViewTranscript}
-            className="soft-focus-ring inline-flex w-full items-center justify-center gap-2 rounded-[12px] border border-primary/25 bg-primary-wash px-3 py-2 text-sm font-semibold text-primary-hover transition-colors hover:bg-primary-soft"
+            className="soft-focus-ring mt-4 inline-flex w-full items-center justify-center gap-2 rounded-[12px] border border-primary/25 bg-primary-wash px-3 py-2 text-sm font-semibold text-primary-hover transition-colors hover:bg-primary-soft"
           >
             <TextIcon className="h-4 w-4" />
             View Transcript
           </button>
         </div>
       ) : (
-        <div className="min-h-0 flex-1 space-y-3 overflow-auto pr-1">
-          {clipSuggestions.map((clip) => {
-            const downloadFormat = downloadFormats[clip.filename] ?? "m4a";
-            const downloadFilename = replaceFileExtension(
-              clip.filename,
-              downloadFormat,
-            );
+        <>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-lg font-semibold text-text-primary">
+              {momentLabel} ({momentCount})
+            </h2>
+            <label className="flex items-center gap-3 text-sm text-text-secondary">
+              Sort by
+              <span className="relative inline-flex">
+                <select
+                  className="soft-focus-ring h-12 appearance-none rounded-[12px] border border-border bg-surface px-4 py-2 pr-10 text-sm font-medium text-text-primary shadow-[var(--shadow-card)] outline-none"
+                  defaultValue="gold"
+                  aria-label="Sort gold moments"
+                >
+                  <option value="gold">Gold Moments</option>
+                  <option value="time">Session Time</option>
+                </select>
+                <ChevronDownIcon className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
+              </span>
+            </label>
+          </div>
 
-            return (
-              <article
-                key={`${clip.filename}-${clip.clipStart}`}
-                className="rounded-[14px] border border-border bg-surface-card p-3"
-              >
-                <p className="line-clamp-2 text-sm font-semibold text-text-primary">
-                  &ldquo;{clip.matchedSegment.text.trim()}&rdquo;
+          <div className="space-y-4">
+            {clipSuggestions.map((clip, index) => {
+              const downloadFormat = downloadFormats[clip.filename] ?? "m4a";
+              const downloadFilename = replaceFileExtension(
+                clip.filename,
+                downloadFormat,
+              );
+
+              return (
+                <article
+                  key={`${clip.filename}-${clip.clipStart}`}
+                  className="rounded-[16px] border border-border bg-surface-card p-4 shadow-[var(--shadow-card)] md:p-5"
+                >
+                  <div className="grid gap-5 lg:grid-cols-[minmax(280px,0.95fr)_minmax(0,1fr)_auto] lg:items-center">
+                    <div className="min-w-0">
+                      <ClipPreview
+                        audioFile={audioFile}
+                        clipStart={clip.clipStart}
+                        clipEnd={clip.clipEnd}
+                      />
+                    </div>
+
+                    <div className="min-w-0 text-center lg:text-left">
+                      <div className="mx-auto mb-3 inline-flex h-9 min-w-11 items-center justify-center gap-1 rounded-[10px] border border-primary/35 bg-surface px-3 text-sm font-semibold text-primary-hover lg:mx-0">
+                        {index + 1}
+                        <SparkleIcon className="h-4 w-4" />
+                      </div>
+                      <p className="text-lg font-semibold leading-snug text-text-primary">
+                        &ldquo;{clip.matchedSegment.text.trim()}&rdquo;
+                      </p>
+                      <p className="mt-3 text-sm text-text-secondary">
+                        {formatDuration(clip.clipStart)}
+                        <span className="mx-2">·</span>
+                        {formatClipLength(clip.clipEnd - clip.clipStart)}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center justify-center gap-3 lg:justify-end">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onDownloadClip(
+                            clip.clipStart,
+                            clip.clipEnd,
+                            clip.filename,
+                            downloadFormat,
+                          )
+                        }
+                        disabled={downloading === downloadFilename}
+                        className="soft-focus-ring inline-flex h-12 w-12 items-center justify-center rounded-[12px] border border-border bg-surface text-text-primary transition-colors hover:bg-primary-wash hover:text-primary-hover disabled:opacity-60"
+                        aria-label={`Download ${downloadFilename}`}
+                      >
+                        <DownloadIcon className="h-5 w-5" />
+                      </button>
+                      <label className="relative">
+                        <span className="sr-only">Download format</span>
+                        <select
+                          value={downloadFormat}
+                          onChange={(e) =>
+                            onDownloadFormatChange(
+                              clip.filename,
+                              e.target.value as ClipDownloadFormat,
+                            )
+                          }
+                          disabled={downloading === downloadFilename}
+                          className="soft-focus-ring h-12 appearance-none rounded-[12px] border border-border bg-surface py-2 pl-3 pr-8 text-xs font-semibold uppercase text-text-primary outline-none disabled:opacity-60"
+                        >
+                          <option value="m4a">M4A</option>
+                          <option value="mp3">MP3</option>
+                        </select>
+                        <ChevronDownIcon className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
+                      </label>
+                      <button
+                        type="button"
+                        className="soft-focus-ring inline-flex h-12 w-12 items-center justify-center rounded-[12px] border border-border bg-surface text-text-primary transition-colors hover:bg-primary-wash hover:text-primary-hover"
+                        aria-label="Moment actions"
+                      >
+                        <EllipsisVertical className="h-5 w-5" aria-hidden="true" />
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+
+          <div className="flex flex-col gap-4 rounded-[16px] border border-border bg-primary-wash/52 p-5 shadow-[var(--shadow-card)] sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-4">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-surface text-primary-hover">
+                <SparkleIcon className="h-6 w-6" />
+              </span>
+              <div>
+                <h2 className="font-semibold text-text-primary">
+                  Help us get smarter
+                </h2>
+                <p className="mt-1 text-sm text-text-secondary">
+                  Rate this moment to help Goldfish improve its suggestions.
                 </p>
-                <p className="mt-1 text-xs text-text-muted">
-                  Trigger: &ldquo;{clip.triggerPhrase}&rdquo; &middot;{" "}
-                  {formatDuration(clip.clipStart)} -{" "}
-                  {formatDuration(clip.clipEnd)}
-                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="soft-focus-ring inline-flex h-12 shrink-0 items-center justify-center rounded-[12px] border border-primary/55 bg-surface px-6 text-sm font-semibold text-primary-hover transition-colors hover:bg-primary-soft"
+            >
+              Rate Moment
+            </button>
+          </div>
 
-                <div className="mt-3">
-                  <ClipPreview
-                    audioFile={audioFile}
-                    clipStart={clip.clipStart}
-                    clipEnd={clip.clipEnd}
-                  />
-                </div>
-
-                <div className="mt-3 flex overflow-hidden rounded-[12px] shadow-[0_8px_18px_rgba(249,115,22,0.18)]">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      onDownloadClip(
-                        clip.clipStart,
-                        clip.clipEnd,
-                        clip.filename,
-                        downloadFormat,
-                      )
-                    }
-                    disabled={downloading === downloadFilename}
-                    className="inline-flex flex-1 items-center justify-center gap-2 bg-primary px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-hover disabled:opacity-60"
-                  >
-                    <DownloadIcon className="h-4 w-4" />
-                    {downloading === downloadFilename ? "Clipping" : "Download"}
-                  </button>
-                  <label className="relative border-l border-white/25 bg-primary text-white transition-colors hover:bg-primary-hover">
-                    <span className="sr-only">Download format</span>
-                    <select
-                      value={downloadFormat}
-                      onChange={(e) =>
-                        onDownloadFormatChange(
-                          clip.filename,
-                          e.target.value as ClipDownloadFormat,
-                        )
-                      }
-                      disabled={downloading === downloadFilename}
-                      className="h-full appearance-none bg-transparent py-2 pl-3 pr-8 text-sm font-semibold uppercase outline-none disabled:opacity-60"
-                    >
-                      <option value="m4a">M4A</option>
-                      <option value="mp3">MP3</option>
-                    </select>
-                    <ChevronDownIcon className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2" />
-                  </label>
-                </div>
-              </article>
-            );
-          })}
-        </div>
+        </>
       )}
+
+      <p className="flex items-center justify-center gap-2 pb-4 text-sm text-text-muted">
+        <Lock className="h-4 w-4" aria-hidden="true" />
+        Your audio is private and secure
+      </p>
     </section>
   );
 }
@@ -999,17 +1114,6 @@ function InfoPill({
   );
 }
 
-function getClipPanelSubtitle(
-  loading: boolean,
-  transcript: TranscriptResult | null,
-  clipCount: number,
-) {
-  if (loading) return "Scanning this session";
-  if (!transcript) return "Highlights will appear here";
-  if (clipCount === 0) return "Transcript ready";
-  return `${clipCount} clip${clipCount === 1 ? "" : "s"} found`;
-}
-
 function formatSize(bytes: number) {
   const gigabytes = bytes / 1024 / 1024 / 1024;
   if (gigabytes >= 1) return `${gigabytes.toFixed(1)} GB`;
@@ -1031,6 +1135,20 @@ function formatDuration(seconds: number) {
 
 function formatReviewDuration(seconds: number) {
   return seconds > 0 ? formatDuration(seconds) : "Unknown";
+}
+
+function formatClipLength(seconds: number) {
+  const roundedSeconds = Math.max(0, Math.round(seconds));
+  if (roundedSeconds < 60) {
+    return `${roundedSeconds}-second clip`;
+  }
+
+  const minutes = Math.max(1, Math.round(roundedSeconds / 60));
+  return `${minutes}-minute clip`;
+}
+
+function getGoldMomentLabel(count: number) {
+  return count === 1 ? "Gold Moment" : "Gold Moments";
 }
 
 function getFileFormat(audioFile: AudioFile) {
@@ -1259,15 +1377,6 @@ function SparkleIcon({ className }: { className?: string }) {
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 3 13.7 8.3 19 10l-5.3 1.7L12 17l-1.7-5.3L5 10l5.3-1.7L12 3Z" />
       <path strokeLinecap="round" strokeLinejoin="round" d="M19 15v4m-2-2h4" />
-    </svg>
-  );
-}
-
-function SpinnerIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24">
-      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8V0C5.4 0 0 5.4 0 12h4Z" />
     </svg>
   );
 }
