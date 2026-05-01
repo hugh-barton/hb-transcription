@@ -7,9 +7,13 @@ import { AudioFile } from "@/types";
 const CONTEXT_PADDING_SECONDS = 30;
 const MIN_CLIP_DURATION_SECONDS = 5;
 const WAVEFORM_HEIGHT = 72;
+const WAVEFORM_TARGET_HEIGHT_RATIO = 0.82;
+const WAVEFORM_MIN_BAR_HEIGHT = 5;
+const WAVEFORM_SILENCE_THRESHOLD = 0.002;
 const MAX_CLIENT_DECODE_BYTES = 60 * 1024 * 1024;
 const MAX_CLIENT_DECODE_SECONDS = 30 * 60;
 const decodedAudioCache = new WeakMap<File, Promise<AudioBuffer>>();
+const audioUrlCache = new WeakMap<File, string>();
 
 interface ClipPreviewProps {
   audioFile: AudioFile;
@@ -48,10 +52,8 @@ export default function ClipPreview({
   const [hoverPercent, setHoverPercent] = useState<number | null>(null);
   const [playbackPercent, setPlaybackPercent] = useState<number | null>(null);
 
-  const audioUrl = useMemo(
-    () => URL.createObjectURL(audioFile.file),
-    [audioFile.file],
-  );
+  const audioUrl = useMemo(() => getAudioUrl(audioFile.file), [audioFile.file]);
+
   const shouldDecodeWaveform =
     audioFile.file.size <= MAX_CLIENT_DECODE_BYTES &&
     (!audioFile.duration || audioFile.duration <= MAX_CLIENT_DECODE_SECONDS);
@@ -156,8 +158,9 @@ export default function ClipPreview({
   );
 
   useEffect(() => {
+    const audio = audioRef.current;
     return () => {
-      URL.revokeObjectURL(audioUrl);
+      audio?.pause();
     };
   }, [audioUrl]);
 
@@ -497,6 +500,7 @@ export default function ClipPreview({
 
       {audioUrl ? (
         <audio
+          key={audioUrl}
           ref={audioRef}
           src={audioUrl}
           preload="metadata"
@@ -532,9 +536,50 @@ function Handle({
 }
 
 async function seekAndPlay(audio: HTMLAudioElement, startTime: number) {
-  await waitForAudioMetadata(audio);
-  audio.currentTime = startTime;
-  await audio.play();
+  const safeStartTime = Math.max(0, startTime);
+
+  audio.pause();
+
+  const metadataPromise = waitForAudioMetadata(audio);
+
+  const seekWhenReady =
+    audio.readyState >= HTMLMediaElement.HAVE_METADATA
+      ? Promise.resolve()
+      : metadataPromise;
+
+  if (audio.readyState >= HTMLMediaElement.HAVE_METADATA) {
+    setAudioCurrentTime(audio, safeStartTime);
+  }
+
+  const playPromise = audio.play();
+
+  await Promise.all([
+    seekWhenReady.then(() => setAudioCurrentTime(audio, safeStartTime)),
+    playPromise,
+  ]);
+}
+
+function getAudioUrl(file: File) {
+  const cachedAudioUrl = audioUrlCache.get(file);
+
+  if (cachedAudioUrl) {
+    return cachedAudioUrl;
+  }
+
+  const audioUrl = URL.createObjectURL(file);
+  audioUrlCache.set(file, audioUrl);
+
+  return audioUrl;
+}
+
+function setAudioCurrentTime(audio: HTMLAudioElement, startTime: number) {
+  if (!Number.isFinite(startTime)) return;
+
+  try {
+    audio.currentTime = startTime;
+  } catch {
+    // Some browsers reject seeking until metadata is available.
+  }
 }
 
 function decodeAudioFile(file: File) {
@@ -580,7 +625,9 @@ function waitForAudioMetadata(audio: HTMLAudioElement) {
     return Promise.resolve();
   }
 
-  audio.load();
+  if (audio.networkState === HTMLMediaElement.NETWORK_EMPTY) {
+    audio.load();
+  }
 
   return new Promise<void>((resolve, reject) => {
     const handleReady = () => {
@@ -664,6 +711,7 @@ function drawWaveform({
   const barWidth = 2;
   const gap = 2;
   const step = barWidth + gap;
+  const bars: Array<{ x: number; peak: number; time: number }> = [];
 
   for (let x = 0; x < width; x += step) {
     const sampleIndex = startSample + Math.floor(x * samplesPerPixel);
@@ -671,18 +719,38 @@ function drawWaveform({
     let peak = 0;
 
     for (let i = sampleIndex; i < maxSampleIndex; i += 1) {
-      peak = Math.max(peak, Math.abs(channelData[i] ?? 0));
+      const sample = channelData[i] ?? 0;
+      const samplePeak = Number.isFinite(sample) ? Math.abs(sample) : 0;
+      peak = Math.max(peak, samplePeak);
     }
 
     const time = contextStart + (x / width) * (contextEnd - contextStart);
-    const barHeight = Math.max(5, peak * (height - 10));
+    bars.push({ x, peak, time });
+  }
+
+  const maxPeak = bars.reduce((currentMax, bar) => Math.max(currentMax, bar.peak), 0);
+  const targetBarHeight = height * WAVEFORM_TARGET_HEIGHT_RATIO;
+  const normalizedScale =
+    maxPeak >= WAVEFORM_SILENCE_THRESHOLD ? targetBarHeight / maxPeak : 0;
+
+  for (const bar of bars) {
+    const barHeight =
+      normalizedScale > 0
+        ? clamp(
+            bar.peak * normalizedScale,
+            WAVEFORM_MIN_BAR_HEIGHT,
+            targetBarHeight,
+          )
+        : WAVEFORM_MIN_BAR_HEIGHT;
     context.fillStyle =
-      time >= selectedStart && time <= selectedEnd ? selectedColor : mutedColor;
+      bar.time >= selectedStart && bar.time <= selectedEnd
+        ? selectedColor
+        : mutedColor;
     context.fillRect(
-      x,
+      bar.x,
       centerY - barHeight / 2,
       barWidth,
-      Math.max(4, barHeight),
+      barHeight,
     );
   }
 }

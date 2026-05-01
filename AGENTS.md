@@ -1,3 +1,11 @@
+<!-- BEGIN:goldfish-project-context-rules -->
+# Goldfish Project Context Rules
+
+At the start of each new chat context, read both `AGENTS.md` and `project-development.md` before making plans or code changes. Use `project-development.md` as the current product/architecture guide for Goldfish-specific workflow, UI, API, and gotcha context.
+
+After large or behaviorally important changes, prompt the user to update `project-development.md` if it has not already been updated in the same work session. Prefer updating it directly when the user asks for documentation maintenance or when the change clearly alters documented behavior.
+<!-- END:goldfish-project-context-rules -->
+
 <!-- BEGIN:nextjs-agent-rules -->
 # This is NOT the Next.js you know
 

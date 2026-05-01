@@ -149,6 +149,8 @@ types/
 - Each moment card shows the interactive waveform editor from `ClipPreview`, the matched transcript quote/description, the editable timestamp/clip length, a working download button, an MP3/M4A selector, and a presentational kebab menu.
 - Compact carousel cards use only the sparkle icon plus result number as the rank marker; the quote/description is the card title, and rank captions are omitted.
 - `ClipPreview` decodes the uploaded source file with the browser Web Audio API and renders waveform peaks on a canvas. It caches browser decode promises per file, skips client waveform decoding for very large/long files, and shows 30 seconds of context before/after the generated clip when available.
+- Rendered waveform amplitudes are normalized per visible context window so quiet and loud recordings fill a consistent percentage of the canvas height while preserving the real relative shape of transients, silences, and dynamics. This is display-only and does not alter playback or downloaded audio.
+- Clip preview audio uses stable object URLs cached per uploaded `File`; the hidden `<audio>` element is keyed by that URL so new sessions/reuploads get a clean media element without React dev Strict Mode revoking a live preview source.
 - The orange start/end playheads initialize from the generated clip window. Dragging either playhead updates the selected region, timestamp readout, playback range, and eventual download payload in real time.
 - Playheads are clamped to the visible context/source duration and enforce a 5-second minimum clip length.
 - Clicking the main play button always starts playback from the current start playhead and stops at the current end playhead.
@@ -281,7 +283,7 @@ The app uses a warm Goldfish palette implemented as ShadCN-compatible CSS variab
 - **No client API key passthrough**: LocalStorage API-key text is informational only. Server routes use `.env.local`.
 - **Large file constraints**: Client validation follows AssemblyAI's 2.2 GB upload limit. Hosted deployments may have stricter request limits.
 - **Audio metadata is best effort**: Browser duration and lightweight WAV/AIFF header parsing are used. MP3/M4A rich details often show `Unknown`.
-- **Object URLs**: Any new `URL.createObjectURL()` call must be paired with `URL.revokeObjectURL()`.
+- **Object URLs**: Pair temporary `URL.createObjectURL()` calls with `URL.revokeObjectURL()`. `ClipPreview` is the exception: it caches preview audio URLs per `File` in a `WeakMap` and intentionally does not revoke them during component cleanup, because React dev Strict Mode can otherwise revoke the live hidden-audio source after remounts/reuploads.
 - **FFmpeg path**: `/api/clip` currently uses `/opt/homebrew/bin/ffmpeg`.
 - **Clip route formats**: M4A is the default download format, with MP3 selectable in the UI.
 - **Next 16 docs**: This repo’s `AGENTS.md` warns that Next.js APIs/conventions may differ; check `node_modules/next/dist/docs/` before changing Next-specific behavior.
