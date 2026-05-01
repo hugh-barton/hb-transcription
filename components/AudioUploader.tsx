@@ -896,7 +896,7 @@ function GoldMomentResultsPage({
               };
               const downloadFormat = downloadFormats[clip.filename] ?? "m4a";
               const downloadFilename = replaceFileExtension(
-                clip.filename,
+                getGoldMomentDownloadFilename(audioFile.name, index),
                 downloadFormat,
               );
 
@@ -943,7 +943,7 @@ function GoldMomentResultsPage({
                           onDownloadClip(
                             clipSelection.clipStart,
                             clipSelection.clipEnd,
-                            clip.filename,
+                            downloadFilename,
                             downloadFormat,
                           )
                         }
@@ -1186,6 +1186,17 @@ function formatClipLength(seconds: number) {
 
 function getClipKey(clip: ReturnType<typeof findClipSuggestions>[number]) {
   return `${clip.filename}-${clip.clipStart}-${clip.clipEnd}`;
+}
+
+function getGoldMomentDownloadFilename(originalFilename: string, index: number) {
+  const safeOriginalFilename = originalFilename
+    .trim()
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+
+  return `gold-${index + 1}-${safeOriginalFilename || "session"}`;
 }
 
 function getGoldMomentLabel(count: number) {

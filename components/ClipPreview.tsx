@@ -18,6 +18,7 @@ interface ClipPreviewProps {
 }
 
 type DragHandle = "start" | "end";
+type PlaybackMode = "selection" | "scrub";
 
 export default function ClipPreview({
   audioFile,
@@ -36,6 +37,9 @@ export default function ClipPreview({
   const [isDecoding, setIsDecoding] = useState(true);
   const [decodeError, setDecodeError] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackMode, setPlaybackMode] = useState<PlaybackMode>("selection");
+  const [hoverPercent, setHoverPercent] = useState<number | null>(null);
+  const [playbackPercent, setPlaybackPercent] = useState<number | null>(null);
 
   const audioUrl = useMemo(
     () => URL.createObjectURL(audioFile.file),
@@ -58,6 +62,11 @@ export default function ClipPreview({
 
   const startPercent = ((selectedStart - contextStart) / contextDuration) * 100;
   const endPercent = ((selectedEnd - contextStart) / contextDuration) * 100;
+  const percentFromTime = useCallback(
+    (time: number) =>
+      clamp(((time - contextStart) / contextDuration) * 100, 0, 100),
+    [contextDuration, contextStart],
+  );
 
   const updateSelection = useCallback(
     (nextStart: number, nextEnd: number) => {
@@ -171,14 +180,20 @@ export default function ClipPreview({
     if (!audio) return;
 
     const handleTimeUpdate = () => {
-      if (audio.currentTime >= selectedEnd) {
+      const stopTime = playbackMode === "scrub" ? contextEnd : selectedEnd;
+
+      if (audio.currentTime >= stopTime) {
         audio.pause();
-        audio.currentTime = selectedEnd;
+        audio.currentTime = stopTime;
         setIsPlaying(false);
+        setPlaybackPercent(null);
       }
     };
     const handleEnded = () => setIsPlaying(false);
-    const handlePause = () => setIsPlaying(false);
+    const handlePause = () => {
+      setIsPlaying(false);
+      setPlaybackPercent(null);
+    };
 
     audio.addEventListener("timeupdate", handleTimeUpdate);
     audio.addEventListener("ended", handleEnded);
@@ -189,7 +204,26 @@ export default function ClipPreview({
       audio.removeEventListener("ended", handleEnded);
       audio.removeEventListener("pause", handlePause);
     };
-  }, [selectedEnd]);
+  }, [contextEnd, playbackMode, selectedEnd]);
+
+  useEffect(() => {
+    if (!isPlaying) return;
+
+    let animationFrame = 0;
+    const updatePlaybackProgress = () => {
+      const audio = audioRef.current;
+      if (!audio || audio.paused) return;
+
+      setPlaybackPercent(percentFromTime(audio.currentTime));
+      animationFrame = window.requestAnimationFrame(updatePlaybackProgress);
+    };
+
+    animationFrame = window.requestAnimationFrame(updatePlaybackProgress);
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+    };
+  }, [isPlaying, percentFromTime]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -248,19 +282,36 @@ export default function ClipPreview({
     };
   }, [handleDragMove]);
 
-  const handleWaveformPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+  const handleWaveformPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
     const waveform = waveformRef.current;
     if (!waveform) return;
 
     const rect = waveform.getBoundingClientRect();
-    const startX = (startPercent / 100) * rect.width;
-    const endX = (endPercent / 100) * rect.width;
-    const pointerX = event.clientX - rect.left;
+    const pointerX = clamp(event.clientX - rect.left, 0, rect.width);
+    setHoverPercent((pointerX / rect.width) * 100);
+  };
 
-    activeHandleRef.current =
-      Math.abs(pointerX - startX) <= Math.abs(pointerX - endX) ? "start" : "end";
-    event.currentTarget.setPointerCapture(event.pointerId);
-    handleDragMove(event.clientX);
+  const handleWaveformPointerLeave = () => {
+    setHoverPercent(null);
+  };
+
+  const handleWaveformPointerDown = async (
+    event: React.PointerEvent<HTMLDivElement>,
+  ) => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const scrubStart = timeFromPointer(event.clientX);
+    setPlaybackMode("scrub");
+    setPlaybackPercent(percentFromTime(scrubStart));
+
+    try {
+      await seekAndPlay(audio, scrubStart);
+      setIsPlaying(true);
+    } catch {
+      setPlaybackPercent(null);
+      setIsPlaying(false);
+    }
   };
 
   const handleHandlePointerDown = (
@@ -280,17 +331,18 @@ export default function ClipPreview({
     if (isPlaying) {
       audio.pause();
       setIsPlaying(false);
+      setPlaybackPercent(null);
       return;
     }
 
-    if (audio.currentTime < selectedStart || audio.currentTime >= selectedEnd) {
-      audio.currentTime = selectedStart;
-    }
+    setPlaybackMode("selection");
+    setPlaybackPercent(percentFromTime(selectedStart));
 
     try {
-      await audio.play();
+      await seekAndPlay(audio, selectedStart);
       setIsPlaying(true);
     } catch {
+      setPlaybackPercent(null);
       setIsPlaying(false);
     }
   };
@@ -311,21 +363,23 @@ export default function ClipPreview({
           type="button"
           onClick={handleTogglePlayback}
           disabled={!audioUrl}
-          className="soft-focus-ring flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-text-primary text-white transition-colors hover:bg-primary-hover disabled:opacity-50"
+          className="soft-focus-ring flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-transparent p-0 text-primary-hover transition-transform hover:scale-105 disabled:opacity-50"
           aria-label={isPlaying ? "Pause selected clip" : "Play selected clip"}
         >
           {isPlaying ? (
-            <Pause className="h-4 w-4" aria-hidden="true" />
+            <Pause className="h-7 w-7" aria-hidden="true" />
           ) : (
-            <Play className="ml-0.5 h-4 w-4" aria-hidden="true" />
+            <Play className="ml-0.5 h-7 w-7" strokeWidth={2.4} aria-hidden="true" />
           )}
         </button>
 
         <div className="min-w-0 flex-1">
           <div
             ref={waveformRef}
-            className="relative h-[72px] cursor-ew-resize touch-none select-none"
+            className="relative h-[72px] cursor-crosshair touch-none select-none"
             onPointerDown={handleWaveformPointerDown}
+            onPointerMove={handleWaveformPointerMove}
+            onPointerLeave={handleWaveformPointerLeave}
           >
             <canvas
               ref={canvasRef}
@@ -339,6 +393,20 @@ export default function ClipPreview({
                 width: `${Math.max(0, endPercent - startPercent)}%`,
               }}
             />
+            {hoverPercent !== null && (
+              <div
+                className="pointer-events-none absolute inset-y-0 z-[8] w-0.5 -translate-x-1/2 rounded-full bg-text-primary/70 shadow-[0_0_0_1px_rgba(255,255,255,0.9)]"
+                style={{ left: `${hoverPercent}%` }}
+              />
+            )}
+            {playbackPercent !== null && (
+              <div
+                className="pointer-events-none absolute inset-y-0 z-[9] w-1 -translate-x-1/2 rounded-full bg-sparkle shadow-[0_0_0_1px_rgba(255,255,255,0.95),0_0_10px_rgba(251,146,60,0.5)]"
+                style={{ left: `${playbackPercent}%` }}
+              >
+                <span className="absolute left-1/2 top-0 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1 rounded-full border border-white bg-sparkle shadow-sm" />
+              </div>
+            )}
             <Handle
               label={`Clip start ${readout.start}`}
               position={startPercent}
@@ -372,7 +440,13 @@ export default function ClipPreview({
       )}
 
       {audioUrl ? (
-        <audio ref={audioRef} src={audioUrl} preload="auto" className="hidden" />
+        <audio
+          ref={audioRef}
+          src={audioUrl}
+          preload="auto"
+          playsInline
+          className="hidden"
+        />
       ) : null}
     </div>
   );
@@ -399,6 +473,40 @@ function Handle({
       <span className="absolute left-1/2 top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-primary shadow-sm" />
     </button>
   );
+}
+
+async function seekAndPlay(audio: HTMLAudioElement, startTime: number) {
+  await waitForAudioMetadata(audio);
+  audio.currentTime = startTime;
+  await audio.play();
+}
+
+function waitForAudioMetadata(audio: HTMLAudioElement) {
+  if (audio.readyState >= HTMLMediaElement.HAVE_METADATA) {
+    return Promise.resolve();
+  }
+
+  audio.load();
+
+  return new Promise<void>((resolve, reject) => {
+    const handleReady = () => {
+      cleanup();
+      resolve();
+    };
+    const handleError = () => {
+      cleanup();
+      reject(new Error("Audio preview could not be loaded"));
+    };
+    const cleanup = () => {
+      audio.removeEventListener("loadedmetadata", handleReady);
+      audio.removeEventListener("canplay", handleReady);
+      audio.removeEventListener("error", handleError);
+    };
+
+    audio.addEventListener("loadedmetadata", handleReady, { once: true });
+    audio.addEventListener("canplay", handleReady, { once: true });
+    audio.addEventListener("error", handleError, { once: true });
+  });
 }
 
 function drawWaveform({
