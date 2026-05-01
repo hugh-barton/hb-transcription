@@ -1,11 +1,45 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  AudioLines,
+  Clock3,
+  EllipsisVertical,
+  FileAudio,
+  Folder,
+  Lock,
+  Play,
+  SlidersHorizontal,
+  Sparkles,
+  Waves,
+} from "lucide-react";
 import ClipPreview from "@/components/ClipPreview";
 import { findClipSuggestions } from "@/lib/triggers";
 import { AudioFile, TranscriptResult } from "@/types";
 
 type ClipDownloadFormat = "mp3" | "m4a";
+type ClipSelection = {
+  clipStart: number;
+  clipEnd: number;
+};
+type AudioMetadataStatus = NonNullable<AudioFile["metadataStatus"]>;
+
+const HEADER_READ_BYTES = 256 * 1024;
+const WAVEFORM_BARS = [
+  16, 24, 18, 34, 28, 46, 36, 58, 42, 66, 48, 74, 56, 88, 46, 70, 54, 64, 44,
+  60, 48, 72, 58, 80, 42, 68, 50, 56, 40, 50, 34, 46, 30, 42, 26, 36, 22, 32,
+  20, 28, 18, 24, 16, 20, 14, 18,
+];
+const TRANSCRIPTION_LOADING_MESSAGES = [
+  "Panning for gold in your session...",
+  "Searching for your next big hit...",
+  "Digging through the grooves...",
+  "Mining your session for moments...",
+  "Listening for that golden take...",
+  "Sifting through the sound...",
+  "Your next hit is in there somewhere...",
+  "Goldfish is on the hunt...",
+];
 
 interface AudioUploaderProps {
   audioFile: AudioFile | null;
@@ -15,6 +49,7 @@ interface AudioUploaderProps {
   onTranscribe: (file: File) => void;
   onReset: () => void;
   loading: boolean;
+  transcriptionStatus: string | null;
 }
 
 export default function AudioUploader({
@@ -25,6 +60,7 @@ export default function AudioUploader({
   onTranscribe,
   onReset,
   loading,
+  transcriptionStatus,
 }: AudioUploaderProps) {
   const [dragActive, setDragActive] = useState(false);
   const [showTranscript, setShowTranscript] = useState(false);
@@ -32,6 +68,9 @@ export default function AudioUploader({
   const [downloading, setDownloading] = useState<string | null>(null);
   const [downloadFormats, setDownloadFormats] = useState<
     Record<string, ClipDownloadFormat>
+  >({});
+  const [clipSelections, setClipSelections] = useState<
+    Record<string, ClipSelection>
   >({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -71,34 +110,62 @@ export default function AudioUploader({
         "audio/x-m4a",
         "audio/mp4",
         "audio/aac",
+        "audio/aiff",
+        "audio/x-aiff",
       ];
+      const validExtensions = [".mp3", ".wav", ".m4a", ".aac", ".aif", ".aiff"];
+      const normalizedFileName = file.name.toLowerCase();
 
-      if (!validTypes.includes(file.type) && !file.name.endsWith(".mp3")) {
-        alert("Please select a valid audio file (MP3, WAV, or M4A)");
+      if (
+        !validTypes.includes(file.type) &&
+        !validExtensions.some((extension) =>
+          normalizedFileName.endsWith(extension),
+        )
+      ) {
+        alert("Please select a valid audio file (MP3, WAV, M4A, or AIFF)");
         return;
       }
 
-      if (file.size > 25 * 1024 * 1024) {
-        alert("File size exceeds 25MB limit");
+      if (file.size > 2.2 * 1024 * 1024 * 1024) {
+        alert("File size exceeds AssemblyAI's 2.2 GB upload limit");
         return;
       }
 
       const url = URL.createObjectURL(file);
       const audio = new Audio(url);
-      audio.addEventListener("loadedmetadata", () => {
+      let didLoadFile = false;
+      audio.addEventListener("loadedmetadata", async () => {
+        if (didLoadFile) return;
+        didLoadFile = true;
         const duration = audio.duration;
         URL.revokeObjectURL(url);
+        const headerMetadata = await readAudioHeaderMetadata(file);
         onAudioLoaded({
           file,
           name: file.name,
           size: file.size,
           type: file.type,
           duration: duration || 0,
+          format: getFileFormatFromFile(file),
+          lastModified: file.lastModified,
+          ...headerMetadata,
         });
       });
-      audio.addEventListener("error", () => {
+      audio.addEventListener("error", async () => {
+        if (didLoadFile) return;
+        didLoadFile = true;
         URL.revokeObjectURL(url);
-        alert("Could not read audio metadata from this file");
+        const headerMetadata = await readAudioHeaderMetadata(file);
+        onAudioLoaded({
+          file,
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          duration: 0,
+          format: getFileFormatFromFile(file),
+          lastModified: file.lastModified,
+          ...headerMetadata,
+        });
       });
     },
     [onAudioLoaded],
@@ -137,6 +204,7 @@ export default function AudioUploader({
     setCopied(false);
     setDownloading(null);
     setDownloadFormats({});
+    setClipSelections({});
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -202,17 +270,21 @@ export default function AudioUploader({
       onDragLeave={handleDrag}
       onDragOver={handleDrag}
       onDrop={handleDrop}
-      className={`relative h-full rounded-[20px] transition-colors ${
-        dragActive ? "bg-primary-wash" : "bg-transparent"
+      className={`relative min-h-[590px] rounded-[20px] transition-colors md:min-h-[560px] lg:h-full lg:min-h-0 ${
+        dragActive ? "bg-primary-wash/70" : "bg-transparent"
       }`}
     >
       <input
         id="fileInput"
         ref={fileInputRef}
         type="file"
-        accept=".mp3,.wav,.m4a,audio/*"
+        accept=".mp3,.wav,.m4a,.aac,.aif,.aiff,audio/*"
         className="hidden"
-        onChange={(e) => e.target.files && handleFileSelect(e.target.files[0])}
+        onChange={(e) => {
+          const selectedFile = e.target.files?.[0];
+          if (selectedFile) handleFileSelect(selectedFile);
+          e.currentTarget.value = "";
+        }}
       />
 
       {audioFile ? (
@@ -221,18 +293,27 @@ export default function AudioUploader({
           transcript={transcript}
           error={error}
           loading={loading}
+          transcriptionStatus={transcriptionStatus}
           clipSuggestions={clipSuggestions}
           downloading={downloading}
           downloadFormats={downloadFormats}
+          clipSelections={clipSelections}
           onDownloadFormatChange={(filename, format) =>
             setDownloadFormats((current) => ({
               ...current,
               [filename]: format,
             }))
           }
+          onClipSelectionChange={(clipKey, selection) =>
+            setClipSelections((current) => ({
+              ...current,
+              [clipKey]: selection,
+            }))
+          }
           onDownloadClip={handleDownloadClip}
           onReset={handleReset}
           onTranscribe={onTranscribe}
+          onChooseDifferentFile={handleBrowseClick}
           onViewTranscript={() => setShowTranscript(true)}
         />
       ) : (
@@ -265,7 +346,7 @@ function DefaultUploadState({
   onKeyDown: (e: React.KeyboardEvent<HTMLDivElement>) => void;
 }) {
   return (
-    <div className="flex h-full flex-col justify-center">
+    <div className="flex min-h-[inherit] flex-col justify-center">
       <div
         onClick={onBrowseClick}
         onKeyDown={onKeyDown}
@@ -273,19 +354,21 @@ function DefaultUploadState({
         tabIndex={0}
         className="soft-focus-ring mx-auto flex max-w-3xl cursor-pointer flex-col items-center rounded-[18px] px-4 text-center md:px-8"
       >
-        <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary-wash text-primary-hover">
-          <span className="flex h-8 w-8 items-center justify-center">
-            <UploadTrayIcon className="h-8 w-8" />
+        <div className="mb-6 flex h-28 w-28 items-center justify-center rounded-full bg-primary-wash/90 text-primary-hover shadow-[0_14px_30px_rgba(249,115,22,0.08)]">
+          <span className="flex h-14 w-14 items-center justify-center">
+            <AudioDocumentIcon className="h-14 w-14" />
           </span>
         </div>
 
-        <h1 className="text-2xl font-semibold text-text-primary md:text-[28px]">
-          {dragActive ? "Drop your jam session here" : "Start a New Session"}
+        <h1 className="max-w-[470px] font-[family-name:var(--font-display)] text-3xl font-bold leading-[1.08] text-text-primary md:text-[36px]">
+          {dragActive
+            ? "Drop your audio file here"
+            : "Ready to find your next exciting moment?"}
         </h1>
-        <p className="mt-2 max-w-sm text-base leading-relaxed text-text-secondary">
+        <p className="mt-6 max-w-[460px] text-base leading-relaxed text-text-secondary">
           {dragActive
             ? "Release to upload your audio"
-            : "Drag your jam session here or upload audio from your device"}
+            : "Upload an audio file from your device and Goldfish will find the moments where excitement peaks."}
         </p>
 
         <button
@@ -294,7 +377,7 @@ function DefaultUploadState({
             e.stopPropagation();
             onBrowseClick();
           }}
-          className="primary-button soft-focus-ring mt-5 inline-flex items-center gap-3 px-6 py-3 text-base font-semibold"
+          className="primary-button soft-focus-ring mt-7 inline-flex min-w-[270px] items-center justify-center gap-3 px-6 py-4 text-lg font-semibold"
         >
           <span className="flex h-5 w-5 items-center justify-center">
             <UploadTrayIcon className="h-5 w-5" />
@@ -302,19 +385,18 @@ function DefaultUploadState({
           Upload Session
         </button>
 
-        <p className="mt-4 flex items-center gap-2 text-sm text-text-secondary">
-          <LockIcon className="h-4 w-4" />
-          Your audio is private and secure
+        <p className="mt-5 text-base text-text-secondary">
+          or drag and drop an audio file here
         </p>
       </div>
 
-      <div className="mx-auto mt-7 flex max-w-3xl flex-wrap items-center justify-center gap-3 text-sm text-text-secondary md:gap-5">
+      <div className="mx-auto mt-16 flex max-w-3xl flex-wrap items-center justify-center gap-4 text-sm text-text-secondary md:gap-6">
         <InfoPill icon={<MusicIcon className="h-5 w-5" />}>
-          WAV, MP3, M4A supported
+          WAV, MP3, AIFF supported
         </InfoPill>
         <span className="hidden h-8 w-px bg-border md:block" />
         <InfoPill icon={<ClockIcon className="h-5 w-5" />}>
-          Up to 25 MB
+          Up to 2 hours
         </InfoPill>
         <span className="hidden h-8 w-px bg-border md:block" />
         <InfoPill icon={<SparkleIcon className="h-5 w-5" />}>
@@ -330,23 +412,30 @@ function SessionWorkspace({
   transcript,
   error,
   loading,
+  transcriptionStatus,
   clipSuggestions,
   downloading,
   downloadFormats,
+  clipSelections,
   onDownloadFormatChange,
+  onClipSelectionChange,
   onDownloadClip,
   onReset,
   onTranscribe,
+  onChooseDifferentFile,
   onViewTranscript,
 }: {
   audioFile: AudioFile;
   transcript: TranscriptResult | null;
   error: string | null;
   loading: boolean;
+  transcriptionStatus: string | null;
   clipSuggestions: ReturnType<typeof findClipSuggestions>;
   downloading: string | null;
   downloadFormats: Record<string, ClipDownloadFormat>;
+  clipSelections: Record<string, ClipSelection>;
   onDownloadFormatChange: (filename: string, format: ClipDownloadFormat) => void;
+  onClipSelectionChange: (clipKey: string, selection: ClipSelection) => void;
   onDownloadClip: (
     clipStart: number,
     clipEnd: number,
@@ -355,140 +444,325 @@ function SessionWorkspace({
   ) => void;
   onReset: () => void;
   onTranscribe: (file: File) => void;
+  onChooseDifferentFile: () => void;
   onViewTranscript: () => void;
 }) {
+  const isComplete = Boolean(transcript) && !loading;
+
   return (
-    <div className="flex h-full flex-col gap-3 md:gap-4">
-      <div className="flex items-center justify-between">
-        <button
-          type="button"
-          onClick={onReset}
-          className="soft-focus-ring inline-flex items-center gap-2 rounded-[12px] border border-border bg-surface px-3 py-2 text-sm font-semibold text-text-secondary transition-colors hover:bg-primary-wash hover:text-primary-hover"
+    <div className="flex min-h-[inherit] flex-col gap-3 md:gap-4">
+      {(loading || isComplete) && (
+        <div
+          className={`z-10 flex items-center justify-between ${
+            loading ? "absolute left-0 right-0 top-0" : ""
+          }`}
         >
-          <PlusIcon className="h-4 w-4" />
-          New Session
-        </button>
-
-        {transcript && (
           <button
             type="button"
-            onClick={onViewTranscript}
-            className="soft-focus-ring inline-flex items-center gap-2 rounded-[12px] border border-primary/25 bg-primary-wash px-3 py-2 text-sm font-semibold text-primary-hover transition-colors hover:bg-primary-soft"
+            onClick={onReset}
+            className="soft-focus-ring inline-flex items-center gap-2 rounded-[12px] border border-border bg-surface px-3 py-2 text-sm font-semibold text-text-secondary transition-colors hover:bg-primary-wash hover:text-primary-hover"
           >
-            <TextIcon className="h-4 w-4" />
-            View Transcript
+            <PlusIcon className="h-4 w-4" />
+            New Session
           </button>
-        )}
-      </div>
 
-      <div className="grid min-h-0 flex-1 gap-4 md:grid-cols-[0.88fr_1.12fr]">
-        <section className="flex min-h-0 flex-col gap-3">
-          <FileSummaryCard audioFile={audioFile} />
-          <CompactAudioPreview audioFile={audioFile} />
-          <button
-            type="button"
-            onClick={() => onTranscribe(audioFile.file)}
-            disabled={loading}
-            className="primary-button soft-focus-ring inline-flex h-12 shrink-0 items-center justify-center gap-2 px-5 text-sm font-semibold disabled:opacity-60"
-          >
-            {loading ? (
-              <>
-                <SpinnerIcon className="h-4 w-4 animate-spin" />
-                Transcribing
-              </>
-            ) : (
-              <>
-                <MicIcon className="h-4 w-4" />
-                Use Session
-              </>
-            )}
-          </button>
-        </section>
+          {isComplete && (
+            <button
+              type="button"
+              onClick={onViewTranscript}
+              className="soft-focus-ring inline-flex items-center gap-2 rounded-[12px] border border-primary/25 bg-primary-wash px-3 py-2 text-sm font-semibold text-primary-hover transition-colors hover:bg-primary-soft"
+            >
+              <TextIcon className="h-4 w-4" />
+              View Transcript
+            </button>
+          )}
+        </div>
+      )}
 
-        <ClipStatusPanel
+      {loading ? (
+        <TranscriptionLoadingState status={transcriptionStatus} />
+      ) : isComplete ? (
+        <div className="mx-auto flex min-h-0 w-full flex-1">
+          <GoldMomentResultsPage
+            audioFile={audioFile}
+            transcript={transcript}
+            error={error}
+            clipSuggestions={clipSuggestions}
+            downloading={downloading}
+            downloadFormats={downloadFormats}
+            clipSelections={clipSelections}
+            onDownloadFormatChange={onDownloadFormatChange}
+            onClipSelectionChange={onClipSelectionChange}
+            onDownloadClip={onDownloadClip}
+            onViewTranscript={onViewTranscript}
+          />
+        </div>
+      ) : (
+        <FileReviewScreen
           audioFile={audioFile}
-          transcript={transcript}
-          error={error}
-          loading={loading}
-          clipSuggestions={clipSuggestions}
-          downloading={downloading}
-          downloadFormats={downloadFormats}
-          onDownloadFormatChange={onDownloadFormatChange}
-          onDownloadClip={onDownloadClip}
-          onViewTranscript={onViewTranscript}
+          onChooseDifferentFile={onChooseDifferentFile}
+          onFindGold={() => onTranscribe(audioFile.file)}
         />
-      </div>
+      )}
     </div>
   );
 }
 
-function FileSummaryCard({ audioFile }: { audioFile: AudioFile }) {
-  return (
-    <div className="rounded-[16px] border border-border bg-surface p-4 shadow-[var(--shadow-card)]">
-      <p className="text-xs font-semibold uppercase text-primary-hover">
-        Selected File
-      </p>
-      <h2 className="mt-1 truncate text-base font-semibold text-text-primary">
-        {audioFile.name}
-      </h2>
-      <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-        <MetadataPill label="Size" value={formatSize(audioFile.size)} />
-        <MetadataPill label="Duration" value={formatDuration(audioFile.duration)} />
-        <MetadataPill label="Type" value={audioFile.type || "Audio"} />
-        <MetadataPill label="Format" value={getFileFormat(audioFile)} />
-      </div>
-    </div>
-  );
-}
-
-function CompactAudioPreview({ audioFile }: { audioFile: AudioFile }) {
-  const audioUrl = useMemo(
-    () => URL.createObjectURL(audioFile.file),
-    [audioFile.file],
-  );
+function TranscriptionLoadingState({ status }: { status: string | null }) {
+  const [messageIndex, setMessageIndex] = useState(0);
 
   useEffect(() => {
-    return () => URL.revokeObjectURL(audioUrl);
-  }, [audioUrl]);
+    const intervalId = window.setInterval(() => {
+      setMessageIndex(
+        (currentIndex) =>
+          (currentIndex + 1) % TRANSCRIPTION_LOADING_MESSAGES.length,
+      );
+    }, 3000);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   return (
-    <div className="min-h-0 flex-1 rounded-[16px] border border-border bg-surface p-4 shadow-[var(--shadow-card)]">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="truncate text-sm font-semibold text-text-primary">
-            Audio Preview
-          </h3>
-          <p className="text-xs text-text-muted">
-            {formatDuration(audioFile.duration)} session
+    <section className="absolute inset-0 flex items-center justify-center px-6 py-12">
+      <div className="w-full max-w-4xl text-center">
+        <p className="font-[family-name:var(--font-display)] text-3xl font-bold leading-tight text-text-primary md:text-[38px]">
+          {TRANSCRIPTION_LOADING_MESSAGES[messageIndex]}
+        </p>
+        {status && (
+          <p className="mt-3 text-sm font-medium text-text-muted">{status}</p>
+        )}
+        <div
+          className="mt-10 h-3 w-full overflow-hidden rounded-full bg-primary-wash/80"
+          role="progressbar"
+          aria-label="Transcription progress"
+          aria-valuetext="Transcription in progress"
+        >
+          <div className="goldfish-loading-progress h-full rounded-full bg-primary" />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function FileReviewScreen({
+  audioFile,
+  onChooseDifferentFile,
+  onFindGold,
+}: {
+  audioFile: AudioFile;
+  onChooseDifferentFile: () => void;
+  onFindGold: () => void;
+}) {
+  const summaryMetadata = [
+    audioFile.format || getFileFormat(audioFile),
+    formatSampleRate(audioFile.sampleRate),
+    formatChannels(audioFile.channels),
+  ].filter((item) => item && item !== "Unknown");
+
+  return (
+    <section className="mx-auto flex min-h-[inherit] w-full max-w-6xl flex-col justify-center py-2 lg:h-full lg:min-h-0">
+      <div className="mx-auto flex max-w-2xl flex-col items-center text-center">
+        <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-primary-wash/90 text-primary-hover shadow-[0_14px_30px_rgba(249,115,22,0.08)]">
+          <AudioDocumentIcon className="h-8 w-8" />
+        </div>
+        <h1 className="font-[family-name:var(--font-display)] text-3xl font-bold leading-tight text-text-primary md:text-[34px]">
+          We&apos;ve got your file!
+        </h1>
+        <p className="mt-2 text-base text-text-secondary">
+          Review your session details before we get started.
+        </p>
+      </div>
+
+      <div className="mx-auto mt-5 w-full max-w-5xl rounded-[18px] border border-border/90 bg-surface/72 p-5 shadow-[var(--shadow-card)] backdrop-blur-sm">
+        <div className="flex flex-col gap-4 border-b border-border pb-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex min-w-0 items-center gap-4">
+            <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-[12px] bg-primary-wash text-primary-hover">
+              <MusicIcon className="h-10 w-10" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="truncate text-lg font-semibold text-text-primary md:text-xl">
+                {audioFile.name}
+              </h2>
+              <p className="mt-2 text-sm text-text-secondary">
+                {summaryMetadata.length > 0
+                  ? summaryMetadata.join("  ·  ")
+                  : "Audio file"}
+              </p>
+              <p className="mt-2 text-sm text-text-muted">
+                {formatFileDate(audioFile.lastModified)}
+                <span className="mx-2">·</span>
+                {formatReviewDuration(audioFile.duration)}
+                <span className="mx-2">·</span>
+                {formatSize(audioFile.size)}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex min-w-0 flex-1 items-center gap-4 lg:max-w-[480px]">
+            <DecorativeWaveform />
+            <button
+              type="button"
+              className="soft-focus-ring flex h-12 w-12 shrink-0 items-center justify-center rounded-[12px] bg-primary-wash text-primary-hover transition-colors hover:bg-primary-soft"
+              aria-label="Audio preview placeholder"
+            >
+              <Play className="h-5 w-5 fill-current" aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+
+        <div className="grid gap-x-12 pt-4 md:grid-cols-2">
+          <div>
+            <SessionDetailRow
+              icon={<FileAudio className="h-4 w-4" />}
+              label="Format"
+              value={audioFile.format || getFileFormat(audioFile)}
+            />
+            <SessionDetailRow
+              icon={<Waves className="h-4 w-4" />}
+              label="Sample Rate"
+              value={formatSampleRate(audioFile.sampleRate)}
+            />
+            <SessionDetailRow
+              icon={<SlidersHorizontal className="h-4 w-4" />}
+              label="Channels"
+              value={formatChannels(audioFile.channels)}
+            />
+            <SessionDetailRow
+              icon={<FileAudio className="h-4 w-4" />}
+              label="Bit Depth"
+              value={formatBitDepth(audioFile.bitDepth)}
+              isLast
+            />
+          </div>
+          <div>
+            <SessionDetailRow
+              icon={<Clock3 className="h-4 w-4" />}
+              label="Duration"
+              value={formatReviewDuration(audioFile.duration)}
+            />
+            <SessionDetailRow
+              icon={<Folder className="h-4 w-4" />}
+              label="File Size"
+              value={formatSize(audioFile.size)}
+              isLast
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="mx-auto mt-4 flex w-full max-w-5xl items-center justify-between gap-4 rounded-[14px] border border-border bg-primary-wash/45 px-5 py-3.5 text-sm text-text-secondary">
+        <div className="flex items-start gap-3">
+          <Sparkles
+            className="mt-0.5 h-5 w-5 shrink-0 text-primary-hover"
+            aria-hidden="true"
+          />
+          <p>
+            Goldfish will analyze your session and find the moments where
+            excitement peaks. This usually takes a few minutes.
           </p>
         </div>
-        <WaveIcon className="h-5 w-5 shrink-0 text-primary-hover" />
+        <button
+          type="button"
+          className="soft-focus-ring hidden shrink-0 text-sm font-semibold text-primary-hover hover:text-primary md:inline"
+        >
+          Learn more
+        </button>
       </div>
-      <audio src={audioUrl} controls className="audio-control w-full" />
+
+      <div className="mt-5 flex flex-col items-center gap-3">
+        <div className="flex w-full max-w-xl flex-col gap-3 sm:flex-row">
+          <button
+            type="button"
+            onClick={onChooseDifferentFile}
+            className="soft-focus-ring inline-flex h-12 flex-1 items-center justify-center rounded-[12px] border border-border bg-surface/80 px-6 text-base font-semibold text-text-primary shadow-[var(--shadow-card)] transition-colors hover:bg-primary-wash"
+          >
+            Choose a Different File
+          </button>
+          <button
+            type="button"
+            onClick={onFindGold}
+            className="primary-button soft-focus-ring inline-flex h-12 flex-1 items-center justify-center gap-2 px-6 text-base font-semibold"
+          >
+            <SparkleIcon className="h-4 w-4" />
+            Find Gold
+          </button>
+        </div>
+        <p className="flex items-center gap-2 text-sm text-text-muted">
+          <Lock className="h-4 w-4" aria-hidden="true" />
+          Your audio is private and secure
+        </p>
+      </div>
+    </section>
+  );
+}
+
+function DecorativeWaveform() {
+  return (
+    <div
+      className="flex h-20 min-w-0 flex-1 items-center justify-center gap-[3px] overflow-hidden text-primary"
+      aria-hidden="true"
+    >
+      {WAVEFORM_BARS.map((height, index) => (
+        <span
+          key={`${height}-${index}`}
+          className="w-[2px] shrink-0 rounded-full bg-current"
+          style={{ height }}
+        />
+      ))}
     </div>
   );
 }
 
-function ClipStatusPanel({
+function SessionDetailRow({
+  icon,
+  label,
+  value,
+  isLast = false,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  isLast?: boolean;
+}) {
+  return (
+    <div
+      className={`flex items-center gap-4 py-3 ${
+        isLast ? "" : "border-b border-border"
+      }`}
+    >
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-wash/70 text-text-secondary">
+        {icon}
+      </span>
+      <span className="min-w-0 flex-1 font-semibold text-text-primary">
+        {label}
+      </span>
+      <span className="text-right text-text-secondary">{value}</span>
+    </div>
+  );
+}
+
+function GoldMomentResultsPage({
   audioFile,
   transcript,
   error,
-  loading,
   clipSuggestions,
   downloading,
   downloadFormats,
+  clipSelections,
   onDownloadFormatChange,
+  onClipSelectionChange,
   onDownloadClip,
   onViewTranscript,
 }: {
   audioFile: AudioFile;
   transcript: TranscriptResult | null;
   error: string | null;
-  loading: boolean;
   clipSuggestions: ReturnType<typeof findClipSuggestions>;
   downloading: string | null;
   downloadFormats: Record<string, ClipDownloadFormat>;
+  clipSelections: Record<string, ClipSelection>;
   onDownloadFormatChange: (filename: string, format: ClipDownloadFormat) => void;
+  onClipSelectionChange: (clipKey: string, selection: ClipSelection) => void;
   onDownloadClip: (
     clipStart: number,
     clipEnd: number,
@@ -497,18 +771,71 @@ function ClipStatusPanel({
   ) => void;
   onViewTranscript: () => void;
 }) {
+  const momentCount = clipSuggestions.length;
+  const momentLabel = getGoldMomentLabel(momentCount);
+  const sessionMetadata = [
+    audioFile.format || getFileFormat(audioFile),
+    formatSampleRate(audioFile.sampleRate),
+    formatChannels(audioFile.channels),
+    formatReviewDuration(audioFile.duration),
+  ].filter((item) => item && item !== "Unknown");
+
   return (
-    <section className="flex min-h-0 flex-col rounded-[16px] border border-border bg-surface p-4 shadow-[var(--shadow-card)]">
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-base font-semibold text-text-primary">
-            Exciting Moments
-          </h2>
-          <p className="mt-1 text-sm text-text-muted">
-            {getClipPanelSubtitle(loading, transcript, clipSuggestions.length)}
-          </p>
+    <section className="flex min-h-0 w-full flex-col gap-6 overflow-auto pb-2 pt-9">
+      <div className="rounded-[18px] border border-border bg-surface/78 p-5 shadow-[var(--shadow-card)] backdrop-blur-sm md:p-7">
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex min-w-0 flex-col gap-5 sm:flex-row sm:items-center">
+            <span className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full border border-primary/25 bg-surface text-primary-hover shadow-[0_14px_30px_rgba(249,115,22,0.08)]">
+              <SparkleIcon className="h-10 w-10" />
+            </span>
+            <div className="min-w-0">
+              <h1 className="font-[family-name:var(--font-display)] text-3xl font-bold leading-tight text-text-primary md:text-[34px]">
+                We found {momentCount} {momentLabel.toLowerCase()}!
+              </h1>
+              <p className="mt-2 text-base leading-relaxed text-text-secondary">
+                {momentCount === 1
+                  ? "Here's the golden moment Goldfish found in your session."
+                  : "Here are the golden moments Goldfish found in your session."}
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            className="soft-focus-ring inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-[12px] border border-border bg-surface px-5 text-sm font-semibold text-text-primary transition-colors hover:bg-primary-wash"
+          >
+            <AudioLines className="h-4 w-4" aria-hidden="true" />
+            View Full Session
+          </button>
         </div>
-        {loading && <SpinnerIcon className="h-5 w-5 animate-spin text-primary-hover" />}
+
+        <div className="mt-7 flex flex-col gap-5 border-t border-border pt-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex min-w-0 items-center gap-4">
+            <span className="flex h-20 w-20 shrink-0 items-center justify-center rounded-[12px] bg-primary-wash text-primary-hover">
+              <MusicIcon className="h-10 w-10" />
+            </span>
+            <div className="min-w-0">
+              <h2 className="truncate text-lg font-semibold text-text-primary">
+                {audioFile.name}
+              </h2>
+              <p className="mt-2 text-sm text-text-secondary">
+                {sessionMetadata.length > 0
+                  ? sessionMetadata.join("  ·  ")
+                  : "Audio file"}
+              </p>
+              <p className="mt-2 text-sm text-text-muted">
+                {formatFileDate(audioFile.lastModified)}
+                <span className="mx-2">·</span>
+                {formatSize(audioFile.size)}
+              </p>
+            </div>
+          </div>
+          <div className="hidden min-w-0 flex-1 items-center justify-end lg:flex">
+            <div className="w-full max-w-[460px] text-primary/85">
+              <DecorativeWaveform />
+            </div>
+          </div>
+        </div>
       </div>
 
       {error ? (
@@ -516,106 +843,177 @@ function ClipStatusPanel({
           <h3 className="mb-1 text-sm font-semibold text-danger">Error</h3>
           <p className="text-sm text-text-secondary">{error}</p>
         </div>
-      ) : loading ? (
-        <StatusCard
-          icon={<SpinnerIcon className="h-5 w-5 animate-spin" />}
-          title="Listening for moments"
-          body="Goldfish is transcribing the session and checking for clip-worthy phrases."
-        />
       ) : !transcript ? (
         <StatusCard
           icon={<SparkleIcon className="h-5 w-5" />}
-          title="Ready for clips"
+          title="Ready for gold moments"
           body="Use this session to find highlights and generate clip previews."
         />
       ) : clipSuggestions.length === 0 ? (
-        <div className="space-y-3">
+        <div className="rounded-[16px] border border-border bg-surface-card p-5 shadow-[var(--shadow-card)]">
           <StatusCard
             icon={<SearchIcon className="h-5 w-5" />}
-            title="No clips found"
+            title="No gold moments found"
             body="No trigger phrases were detected, but the full transcript is available."
           />
           <button
             type="button"
             onClick={onViewTranscript}
-            className="soft-focus-ring inline-flex w-full items-center justify-center gap-2 rounded-[12px] border border-primary/25 bg-primary-wash px-3 py-2 text-sm font-semibold text-primary-hover transition-colors hover:bg-primary-soft"
+            className="soft-focus-ring mt-4 inline-flex w-full items-center justify-center gap-2 rounded-[12px] border border-primary/25 bg-primary-wash px-3 py-2 text-sm font-semibold text-primary-hover transition-colors hover:bg-primary-soft"
           >
             <TextIcon className="h-4 w-4" />
             View Transcript
           </button>
         </div>
       ) : (
-        <div className="min-h-0 flex-1 space-y-3 overflow-auto pr-1">
-          {clipSuggestions.map((clip) => {
-            const downloadFormat = downloadFormats[clip.filename] ?? "m4a";
-            const downloadFilename = replaceFileExtension(
-              clip.filename,
-              downloadFormat,
-            );
+        <>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-lg font-semibold text-text-primary">
+              {momentLabel} ({momentCount})
+            </h2>
+            <label className="flex items-center gap-3 text-sm text-text-secondary">
+              Sort by
+              <span className="relative inline-flex">
+                <select
+                  className="soft-focus-ring h-12 appearance-none rounded-[12px] border border-border bg-surface px-4 py-2 pr-10 text-sm font-medium text-text-primary shadow-[var(--shadow-card)] outline-none"
+                  defaultValue="gold"
+                  aria-label="Sort gold moments"
+                >
+                  <option value="gold">Gold Moments</option>
+                  <option value="time">Session Time</option>
+                </select>
+                <ChevronDownIcon className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
+              </span>
+            </label>
+          </div>
 
-            return (
-              <article
-                key={`${clip.filename}-${clip.clipStart}`}
-                className="rounded-[14px] border border-border bg-surface-card p-3"
-              >
-                <p className="line-clamp-2 text-sm font-semibold text-text-primary">
-                  &ldquo;{clip.matchedSegment.text.trim()}&rdquo;
+          <div className="space-y-4">
+            {clipSuggestions.map((clip, index) => {
+              const clipKey = getClipKey(clip);
+              const clipSelection = clipSelections[clipKey] ?? {
+                clipStart: clip.clipStart,
+                clipEnd: clip.clipEnd,
+              };
+              const downloadFormat = downloadFormats[clip.filename] ?? "m4a";
+              const downloadFilename = replaceFileExtension(
+                clip.filename,
+                downloadFormat,
+              );
+
+              return (
+                <article
+                  key={clipKey}
+                  className="rounded-[16px] border border-border bg-surface-card p-4 shadow-[var(--shadow-card)] md:p-5"
+                >
+                  <div className="grid gap-5 lg:grid-cols-[minmax(280px,0.95fr)_minmax(0,1fr)_auto] lg:items-center">
+                    <div className="min-w-0">
+                      <ClipPreview
+                        audioFile={audioFile}
+                        clipStart={clipSelection.clipStart}
+                        clipEnd={clipSelection.clipEnd}
+                        contextClipStart={clip.clipStart}
+                        contextClipEnd={clip.clipEnd}
+                        onSelectionChange={(selection) =>
+                          onClipSelectionChange(clipKey, selection)
+                        }
+                      />
+                    </div>
+
+                    <div className="min-w-0 text-center lg:text-left">
+                      <div className="mx-auto mb-3 inline-flex h-9 min-w-11 items-center justify-center gap-1 rounded-[10px] border border-primary/35 bg-surface px-3 text-sm font-semibold text-primary-hover lg:mx-0">
+                        {index + 1}
+                        <SparkleIcon className="h-4 w-4" />
+                      </div>
+                      <p className="text-lg font-semibold leading-snug text-text-primary">
+                        &ldquo;{clip.matchedSegment.text.trim()}&rdquo;
+                      </p>
+                      <p className="mt-3 text-sm text-text-secondary">
+                        {formatDuration(clipSelection.clipStart)}
+                        <span className="mx-2">·</span>
+                        {formatClipLength(
+                          clipSelection.clipEnd - clipSelection.clipStart,
+                        )}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center justify-center gap-3 lg:justify-end">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onDownloadClip(
+                            clipSelection.clipStart,
+                            clipSelection.clipEnd,
+                            clip.filename,
+                            downloadFormat,
+                          )
+                        }
+                        disabled={downloading === downloadFilename}
+                        className="soft-focus-ring inline-flex h-12 w-12 items-center justify-center rounded-[12px] border border-border bg-surface text-text-primary transition-colors hover:bg-primary-wash hover:text-primary-hover disabled:opacity-60"
+                        aria-label={`Download ${downloadFilename}`}
+                      >
+                        <DownloadIcon className="h-5 w-5" />
+                      </button>
+                      <label className="relative">
+                        <span className="sr-only">Download format</span>
+                        <select
+                          value={downloadFormat}
+                          onChange={(e) =>
+                            onDownloadFormatChange(
+                              clip.filename,
+                              e.target.value as ClipDownloadFormat,
+                            )
+                          }
+                          disabled={downloading === downloadFilename}
+                          className="soft-focus-ring h-12 appearance-none rounded-[12px] border border-border bg-surface py-2 pl-3 pr-8 text-xs font-semibold uppercase text-text-primary outline-none disabled:opacity-60"
+                        >
+                          <option value="m4a">M4A</option>
+                          <option value="mp3">MP3</option>
+                        </select>
+                        <ChevronDownIcon className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
+                      </label>
+                      <button
+                        type="button"
+                        className="soft-focus-ring inline-flex h-12 w-12 items-center justify-center rounded-[12px] border border-border bg-surface text-text-primary transition-colors hover:bg-primary-wash hover:text-primary-hover"
+                        aria-label="Moment actions"
+                      >
+                        <EllipsisVertical className="h-5 w-5" aria-hidden="true" />
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+
+          <div className="flex flex-col gap-4 rounded-[16px] border border-border bg-primary-wash/52 p-5 shadow-[var(--shadow-card)] sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-4">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-surface text-primary-hover">
+                <SparkleIcon className="h-6 w-6" />
+              </span>
+              <div>
+                <h2 className="font-semibold text-text-primary">
+                  Help us get smarter
+                </h2>
+                <p className="mt-1 text-sm text-text-secondary">
+                  Rate this moment to help Goldfish improve its suggestions.
                 </p>
-                <p className="mt-1 text-xs text-text-muted">
-                  Trigger: &ldquo;{clip.triggerPhrase}&rdquo; &middot;{" "}
-                  {formatDuration(clip.clipStart)} -{" "}
-                  {formatDuration(clip.clipEnd)}
-                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="soft-focus-ring inline-flex h-12 shrink-0 items-center justify-center rounded-[12px] border border-primary/55 bg-surface px-6 text-sm font-semibold text-primary-hover transition-colors hover:bg-primary-soft"
+            >
+              Rate Moment
+            </button>
+          </div>
 
-                <div className="mt-3">
-                  <ClipPreview
-                    audioFile={audioFile}
-                    clipStart={clip.clipStart}
-                    clipEnd={clip.clipEnd}
-                  />
-                </div>
-
-                <div className="mt-3 flex overflow-hidden rounded-[12px] shadow-[0_8px_18px_rgba(249,115,22,0.18)]">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      onDownloadClip(
-                        clip.clipStart,
-                        clip.clipEnd,
-                        clip.filename,
-                        downloadFormat,
-                      )
-                    }
-                    disabled={downloading === downloadFilename}
-                    className="inline-flex flex-1 items-center justify-center gap-2 bg-primary px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary-hover disabled:opacity-60"
-                  >
-                    <DownloadIcon className="h-4 w-4" />
-                    {downloading === downloadFilename ? "Clipping" : "Download"}
-                  </button>
-                  <label className="relative border-l border-white/25 bg-primary text-white transition-colors hover:bg-primary-hover">
-                    <span className="sr-only">Download format</span>
-                    <select
-                      value={downloadFormat}
-                      onChange={(e) =>
-                        onDownloadFormatChange(
-                          clip.filename,
-                          e.target.value as ClipDownloadFormat,
-                        )
-                      }
-                      disabled={downloading === downloadFilename}
-                      className="h-full appearance-none bg-transparent py-2 pl-3 pr-8 text-sm font-semibold uppercase outline-none disabled:opacity-60"
-                    >
-                      <option value="m4a">M4A</option>
-                      <option value="mp3">MP3</option>
-                    </select>
-                    <ChevronDownIcon className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2" />
-                  </label>
-                </div>
-              </article>
-            );
-          })}
-        </div>
+        </>
       )}
+
+      <p className="flex items-center justify-center gap-2 pb-4 text-sm text-text-muted">
+        <Lock className="h-4 w-4" aria-hidden="true" />
+        Your audio is private and secure
+      </p>
     </section>
   );
 }
@@ -753,29 +1151,191 @@ function InfoPill({
   );
 }
 
-function getClipPanelSubtitle(
-  loading: boolean,
-  transcript: TranscriptResult | null,
-  clipCount: number,
-) {
-  if (loading) return "Scanning this session";
-  if (!transcript) return "Highlights will appear here";
-  if (clipCount === 0) return "Transcript ready";
-  return `${clipCount} clip${clipCount === 1 ? "" : "s"} found`;
-}
-
 function formatSize(bytes: number) {
+  const gigabytes = bytes / 1024 / 1024 / 1024;
+  if (gigabytes >= 1) return `${gigabytes.toFixed(1)} GB`;
   return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
 }
 
 function formatDuration(seconds: number) {
+  const hours = Math.floor(seconds / 3600);
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
+  if (hours > 0) {
+    const remainingMins = Math.floor((seconds % 3600) / 60);
+    return `${hours}:${remainingMins.toString().padStart(2, "0")}:${secs
+      .toString()
+      .padStart(2, "0")}`;
+  }
   return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
 
+function formatReviewDuration(seconds: number) {
+  return seconds > 0 ? formatDuration(seconds) : "Unknown";
+}
+
+function formatClipLength(seconds: number) {
+  const roundedSeconds = Math.max(0, Math.round(seconds));
+  if (roundedSeconds < 60) {
+    return `${roundedSeconds}-second clip`;
+  }
+
+  const minutes = Math.max(1, Math.round(roundedSeconds / 60));
+  return `${minutes}-minute clip`;
+}
+
+function getClipKey(clip: ReturnType<typeof findClipSuggestions>[number]) {
+  return `${clip.filename}-${clip.clipStart}-${clip.clipEnd}`;
+}
+
+function getGoldMomentLabel(count: number) {
+  return count === 1 ? "Gold Moment" : "Gold Moments";
+}
+
 function getFileFormat(audioFile: AudioFile) {
-  return audioFile.file.name.split(".").pop()?.toUpperCase() || "Audio";
+  return getFileFormatFromFile(audioFile.file);
+}
+
+function getFileFormatFromFile(file: File) {
+  const extension = file.name.split(".").pop()?.toUpperCase();
+  if (extension) return extension === "AIF" ? "AIFF" : extension;
+  if (file.type.includes("mpeg")) return "MP3";
+  if (file.type.includes("wav")) return "WAV";
+  if (file.type.includes("aiff")) return "AIFF";
+  if (file.type.includes("mp4")) return "M4A";
+  return "Audio";
+}
+
+function formatSampleRate(sampleRate?: number) {
+  if (!sampleRate) return "Unknown";
+  const kilohertz = sampleRate / 1000;
+  return `${Number.isInteger(kilohertz) ? kilohertz : kilohertz.toFixed(1)} kHz`;
+}
+
+function formatChannels(channels?: number) {
+  if (!channels) return "Unknown";
+  if (channels === 1) return "Mono";
+  if (channels === 2) return "Stereo";
+  return `${channels} channels`;
+}
+
+function formatBitDepth(bitDepth?: number) {
+  return bitDepth ? `${bitDepth}-bit` : "Unknown";
+}
+
+function formatFileDate(lastModified?: number) {
+  if (!lastModified) return "Uploaded today";
+  return new Date(lastModified).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+async function readAudioHeaderMetadata(
+  file: File,
+): Promise<Partial<AudioFile>> {
+  try {
+    const header = await file
+      .slice(0, Math.min(file.size, HEADER_READ_BYTES))
+      .arrayBuffer();
+    const view = new DataView(header);
+    const parsed =
+      parseWavMetadata(view) ?? parseAiffMetadata(view) ?? undefined;
+    const metadataStatus = getMetadataStatus(parsed);
+
+    return {
+      ...(parsed ?? {}),
+      metadataStatus,
+    };
+  } catch {
+    return { metadataStatus: "unknown" };
+  }
+}
+
+function getMetadataStatus(
+  parsed?: Pick<AudioFile, "sampleRate" | "channels" | "bitDepth">,
+): AudioMetadataStatus {
+  if (!parsed) return "unknown";
+  return parsed.sampleRate && parsed.channels && parsed.bitDepth
+    ? "available"
+    : "partial";
+}
+
+function parseWavMetadata(
+  view: DataView,
+): Pick<AudioFile, "sampleRate" | "channels" | "bitDepth"> | null {
+  if (view.byteLength < 44) return null;
+  if (readAscii(view, 0, 4) !== "RIFF" || readAscii(view, 8, 4) !== "WAVE") {
+    return null;
+  }
+
+  let offset = 12;
+  while (offset + 8 <= view.byteLength) {
+    const chunkId = readAscii(view, offset, 4);
+    const chunkSize = view.getUint32(offset + 4, true);
+    const dataOffset = offset + 8;
+
+    if (chunkId === "fmt " && dataOffset + 16 <= view.byteLength) {
+      return {
+        channels: view.getUint16(dataOffset + 2, true),
+        sampleRate: view.getUint32(dataOffset + 4, true),
+        bitDepth: view.getUint16(dataOffset + 14, true),
+      };
+    }
+
+    offset = dataOffset + chunkSize + (chunkSize % 2);
+  }
+
+  return null;
+}
+
+function parseAiffMetadata(
+  view: DataView,
+): Pick<AudioFile, "sampleRate" | "channels" | "bitDepth"> | null {
+  if (view.byteLength < 54) return null;
+  const fileType = readAscii(view, 8, 4);
+  if (readAscii(view, 0, 4) !== "FORM" || !["AIFF", "AIFC"].includes(fileType)) {
+    return null;
+  }
+
+  let offset = 12;
+  while (offset + 8 <= view.byteLength) {
+    const chunkId = readAscii(view, offset, 4);
+    const chunkSize = view.getUint32(offset + 4, false);
+    const dataOffset = offset + 8;
+
+    if (chunkId === "COMM" && dataOffset + 18 <= view.byteLength) {
+      return {
+        channels: view.getUint16(dataOffset, false),
+        bitDepth: view.getUint16(dataOffset + 6, false),
+        sampleRate: readExtendedFloat80(view, dataOffset + 8),
+      };
+    }
+
+    offset = dataOffset + chunkSize + (chunkSize % 2);
+  }
+
+  return null;
+}
+
+function readAscii(view: DataView, offset: number, length: number) {
+  let value = "";
+  for (let index = 0; index < length; index += 1) {
+    value += String.fromCharCode(view.getUint8(offset + index));
+  }
+  return value;
+}
+
+function readExtendedFloat80(view: DataView, offset: number) {
+  const exponent = view.getUint16(offset, false) & 0x7fff;
+  const highMantissa = view.getUint32(offset + 2, false);
+  const lowMantissa = view.getUint32(offset + 6, false);
+
+  if (exponent === 0 && highMantissa === 0 && lowMantissa === 0) return 0;
+
+  const mantissa = highMantissa * 2 ** 32 + lowMantissa;
+  return Math.round(mantissa * 2 ** (exponent - 16383 - 63));
 }
 
 function replaceFileExtension(
@@ -811,11 +1371,26 @@ function UploadTrayIcon({ className }: { className?: string }) {
   );
 }
 
-function LockIcon({ className }: { className?: string }) {
+function AudioDocumentIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M7 10V8a5 5 0 0 1 10 0v2" />
-      <rect width="14" height="10" x="5" y="10" rx="2" />
+    <svg
+      className={className}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      aria-hidden="true"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M6.75 3.75h7.4l3.1 3.1v13.4h-10.5a2 2 0 0 1-2-2V5.75a2 2 0 0 1 2-2Z"
+      />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M14.25 4v3h3" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9.5 16.5a1.5 1.5 0 1 1-1.5-1.5 1.5 1.5 0 0 1 1.5 1.5Z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M14.5 15.25a1.5 1.5 0 1 1-1.5-1.5 1.5 1.5 0 0 1 1.5 1.5Z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9.5 16.5v-6.25l5-1v6" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9.5 11.75l5-1" />
     </svg>
   );
 }
@@ -847,24 +1422,6 @@ function SparkleIcon({ className }: { className?: string }) {
   );
 }
 
-function MicIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 14a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3Z" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 0 1-14 0m7 7v3m-4 0h8" />
-    </svg>
-  );
-}
-
-function SpinnerIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24">
-      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8V0C5.4 0 0 5.4 0 12h4Z" />
-    </svg>
-  );
-}
-
 function PlusIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
@@ -878,18 +1435,6 @@ function TextIcon({ className }: { className?: string }) {
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
       <path strokeLinecap="round" strokeLinejoin="round" d="M7 7h10M7 12h10M7 17h6" />
       <rect width="16" height="18" x="4" y="3" rx="2" />
-    </svg>
-  );
-}
-
-function WaveIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
-      <path strokeLinecap="round" d="M4 12v2" />
-      <path strokeLinecap="round" d="M8 7v10" />
-      <path strokeLinecap="round" d="M12 4v16" />
-      <path strokeLinecap="round" d="M16 8v8" />
-      <path strokeLinecap="round" d="M20 11v2" />
     </svg>
   );
 }

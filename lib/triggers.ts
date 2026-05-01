@@ -25,11 +25,17 @@ export interface ClipSuggestion {
   filename: string;
 }
 
+type TriggerMatch = {
+  triggerPhrase: string;
+  matchedSegment: Segment;
+  segmentIndex: number;
+};
+
 export function findClipSuggestions(
   segments: Segment[],
   fileDuration: number
 ): ClipSuggestion[] {
-  const matches: ClipSuggestion[] = [];
+  const matches: TriggerMatch[] = [];
   const matchedIndexes = new Set<number>();
 
   for (const phrase of TRIGGER_PHRASES) {
@@ -41,26 +47,72 @@ export function findClipSuggestions(
 
       matchedIndexes.add(i);
 
-      const t = segments[i].start;
-      const clipStart = Math.max(0, t - 30);
-      const clipEnd = Math.min(fileDuration, segments[i].end + 30);
-
-      const surroundingText = buildSurroundingText(segments, i);
-      const filename = slugify(surroundingText) + ".mp3";
-
       matches.push({
         triggerPhrase: phrase,
         matchedSegment: segments[i],
-        clipStart,
-        clipEnd,
-        filename,
+        segmentIndex: i,
       });
     }
   }
 
   matches.sort((a, b) => a.matchedSegment.start - b.matchedSegment.start);
 
-  return matches;
+  return mergeNearbyMatches(matches, segments, fileDuration);
+}
+
+function mergeNearbyMatches(
+  matches: TriggerMatch[],
+  segments: Segment[],
+  fileDuration: number,
+): ClipSuggestion[] {
+  const suggestions: ClipSuggestion[] = [];
+  let currentGroup: TriggerMatch[] = [];
+
+  for (const match of matches) {
+    const latestTriggerStart =
+      currentGroup[currentGroup.length - 1]?.matchedSegment.start;
+
+    if (
+      currentGroup.length === 0 ||
+      match.matchedSegment.start - latestTriggerStart <= 30
+    ) {
+      currentGroup.push(match);
+      continue;
+    }
+
+    suggestions.push(buildClipSuggestion(currentGroup, segments, fileDuration));
+    currentGroup = [match];
+  }
+
+  if (currentGroup.length > 0) {
+    suggestions.push(buildClipSuggestion(currentGroup, segments, fileDuration));
+  }
+
+  return suggestions;
+}
+
+function buildClipSuggestion(
+  group: TriggerMatch[],
+  segments: Segment[],
+  fileDuration: number,
+): ClipSuggestion {
+  const earliestMatch = group[0];
+  const latestMatch = group[group.length - 1];
+  const triggerPhrases = Array.from(
+    new Set(group.map((match) => match.triggerPhrase)),
+  );
+  const surroundingText = buildSurroundingText(
+    segments,
+    earliestMatch.segmentIndex,
+  );
+
+  return {
+    triggerPhrase: triggerPhrases.join(", "),
+    matchedSegment: earliestMatch.matchedSegment,
+    clipStart: Math.max(0, earliestMatch.matchedSegment.start - 30),
+    clipEnd: Math.min(fileDuration, latestMatch.matchedSegment.end + 30),
+    filename: slugify(surroundingText) + ".mp3",
+  };
 }
 
 function buildSurroundingText(segments: Segment[], index: number): string {

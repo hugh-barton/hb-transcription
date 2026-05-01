@@ -1,127 +1,528 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Pause, Play } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AudioFile } from "@/types";
+
+const CONTEXT_PADDING_SECONDS = 30;
+const MIN_CLIP_DURATION_SECONDS = 5;
+const WAVEFORM_HEIGHT = 72;
 
 interface ClipPreviewProps {
   audioFile: AudioFile;
   clipStart: number;
   clipEnd: number;
+  contextClipStart?: number;
+  contextClipEnd?: number;
+  onSelectionChange?: (selection: { clipStart: number; clipEnd: number }) => void;
 }
+
+type DragHandle = "start" | "end";
 
 export default function ClipPreview({
   audioFile,
   clipStart,
   clipEnd,
+  contextClipStart = clipStart,
+  contextClipEnd = clipEnd,
+  onSelectionChange,
 }: ClipPreviewProps) {
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const waveformRef = useRef<HTMLDivElement>(null);
+  const activeHandleRef = useRef<DragHandle | null>(null);
+  const [audioBuffer, setAudioBuffer] = useState<AudioBuffer | null>(null);
+  const [canvasWidth, setCanvasWidth] = useState(0);
+  const [isDecoding, setIsDecoding] = useState(true);
+  const [decodeError, setDecodeError] = useState<string | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  const audioUrl = useMemo(
+    () => URL.createObjectURL(audioFile.file),
+    [audioFile.file],
+  );
+
+  const sourceDuration = audioBuffer?.duration || audioFile.duration || clipEnd;
+  const contextStart = Math.max(0, contextClipStart - CONTEXT_PADDING_SECONDS);
+  const contextEnd = Math.min(
+    sourceDuration,
+    Math.max(contextClipEnd + CONTEXT_PADDING_SECONDS, clipEnd),
+  );
+  const contextDuration = Math.max(0.001, contextEnd - contextStart);
+  const selectedStart = clamp(clipStart, contextStart, contextEnd);
+  const selectedEnd = clamp(
+    Math.max(clipEnd, selectedStart + MIN_CLIP_DURATION_SECONDS),
+    selectedStart + MIN_CLIP_DURATION_SECONDS,
+    contextEnd,
+  );
+
+  const startPercent = ((selectedStart - contextStart) / contextDuration) * 100;
+  const endPercent = ((selectedEnd - contextStart) / contextDuration) * 100;
+
+  const updateSelection = useCallback(
+    (nextStart: number, nextEnd: number) => {
+      const clampedStart = clamp(
+        nextStart,
+        contextStart,
+        Math.max(contextStart, nextEnd - MIN_CLIP_DURATION_SECONDS),
+      );
+      const clampedEnd = clamp(
+        nextEnd,
+        Math.min(contextEnd, clampedStart + MIN_CLIP_DURATION_SECONDS),
+        contextEnd,
+      );
+
+      onSelectionChange?.({
+        clipStart: roundTime(clampedStart),
+        clipEnd: roundTime(clampedEnd),
+      });
+    },
+    [contextEnd, contextStart, onSelectionChange],
+  );
 
   useEffect(() => {
-    let cancelled = false;
-    const controller = new AbortController();
-
-    const fetchClip = async () => {
-      setLoading(true);
-      setError(null);
-      setAudioUrl(null);
-
-      try {
-        const formData = new FormData();
-        formData.append("file", audioFile.file);
-        formData.append("clipStart", String(clipStart));
-        formData.append("clipEnd", String(clipEnd));
-        formData.append("filename", "preview.mp3");
-        formData.append("preview", "true");
-
-        const response = await fetch("/api/clip", {
-          method: "POST",
-          body: formData,
-          signal: controller.signal,
-        });
-
-        if (!response.ok) {
-          const err = await response.json().catch(() => ({}));
-          throw new Error(err.error || "Failed to generate preview");
-        }
-
-        const blob = await response.blob();
-
-        if (cancelled) return;
-
-        const url = URL.createObjectURL(blob);
-        setAudioUrl(url);
-        setLoading(false);
-      } catch (err) {
-        if (cancelled) return;
-        if (err instanceof DOMException && err.name === "AbortError") return;
-        setError(err instanceof Error ? err.message : "Preview failed");
-        setLoading(false);
-      }
-    };
-
-    fetchClip();
-
     return () => {
-      cancelled = true;
-      controller.abort();
-    };
-  }, [audioFile.file, clipStart, clipEnd]);
-
-  useEffect(() => {
-    return () => {
-      if (audioUrl) {
-        URL.revokeObjectURL(audioUrl);
-      }
+      URL.revokeObjectURL(audioUrl);
     };
   }, [audioUrl]);
 
   useEffect(() => {
+    let cancelled = false;
+    let audioContext: AudioContext | null = null;
+
+    const decodeAudio = async () => {
+      setIsDecoding(true);
+      setDecodeError(null);
+
+      try {
+        const AudioContextConstructor =
+          window.AudioContext ||
+          (
+            window as Window &
+              typeof globalThis & {
+                webkitAudioContext?: typeof AudioContext;
+              }
+          ).webkitAudioContext;
+
+        if (!AudioContextConstructor) {
+          throw new Error("Your browser cannot render waveforms for this file");
+        }
+
+        audioContext = new AudioContextConstructor();
+        const arrayBuffer = await audioFile.file.arrayBuffer();
+        const decodedBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+        if (!cancelled) {
+          setAudioBuffer(decodedBuffer);
+          setIsDecoding(false);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setDecodeError(
+            error instanceof Error ? error.message : "Waveform unavailable",
+          );
+          setIsDecoding(false);
+        }
+      } finally {
+        await audioContext?.close().catch(() => undefined);
+      }
+    };
+
+    decodeAudio();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [audioFile.file]);
+
+  useEffect(() => {
+    const waveform = waveformRef.current;
+    if (!waveform) return;
+
+    const resizeObserver = new ResizeObserver(([entry]) => {
+      setCanvasWidth(Math.floor(entry.contentRect.width));
+    });
+
+    resizeObserver.observe(waveform);
+    return () => resizeObserver.disconnect();
+  }, []);
+
+  useEffect(() => {
+    drawWaveform({
+      audioBuffer,
+      canvas: canvasRef.current,
+      contextStart,
+      contextEnd,
+      selectedStart,
+      selectedEnd,
+      width: canvasWidth,
+    });
+  }, [
+    audioBuffer,
+    canvasWidth,
+    contextEnd,
+    contextStart,
+    selectedEnd,
+    selectedStart,
+  ]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const handleTimeUpdate = () => {
+      if (audio.currentTime >= selectedEnd) {
+        audio.pause();
+        audio.currentTime = selectedEnd;
+        setIsPlaying(false);
+      }
+    };
+    const handleEnded = () => setIsPlaying(false);
+    const handlePause = () => setIsPlaying(false);
+
+    audio.addEventListener("timeupdate", handleTimeUpdate);
+    audio.addEventListener("ended", handleEnded);
+    audio.addEventListener("pause", handlePause);
+
+    return () => {
+      audio.removeEventListener("timeupdate", handleTimeUpdate);
+      audio.removeEventListener("ended", handleEnded);
+      audio.removeEventListener("pause", handlePause);
+    };
+  }, [selectedEnd]);
+
+  useEffect(() => {
     const audio = audioRef.current;
     return () => {
-      if (audio) {
-        audio.pause();
-      }
+      audio?.pause();
     };
   }, []);
 
-  const duration = clipEnd - clipStart;
-  const mins = Math.floor(duration / 60);
-  const secs = Math.floor(duration % 60);
+  const timeFromPointer = useCallback(
+    (clientX: number) => {
+      const waveform = waveformRef.current;
+      if (!waveform) return selectedStart;
 
-  if (loading) {
-    return (
-      <div className="flex items-center gap-3 rounded-[12px] border border-border bg-surface px-3 py-3">
-        <div className="h-8 w-8 shrink-0 animate-spin rounded-full border-2 border-border border-t-primary" />
-        <p className="text-sm text-text-muted">Generating preview...</p>
-      </div>
-    );
-  }
+      const rect = waveform.getBoundingClientRect();
+      const x = clamp(clientX - rect.left, 0, rect.width);
+      return contextStart + (x / rect.width) * contextDuration;
+    },
+    [contextDuration, contextStart, selectedStart],
+  );
 
-  if (error) {
-    return (
-      <p className="rounded-[12px] border border-danger/25 bg-danger/10 px-3 py-2 text-xs text-danger">
-        Preview unavailable: {error}
-      </p>
-    );
-  }
+  const handleDragMove = useCallback(
+    (clientX: number) => {
+      const activeHandle = activeHandleRef.current;
+      if (!activeHandle) return;
+
+      const nextTime = timeFromPointer(clientX);
+
+      if (activeHandle === "start") {
+        updateSelection(nextTime, selectedEnd);
+      } else {
+        updateSelection(selectedStart, nextTime);
+      }
+    },
+    [selectedEnd, selectedStart, timeFromPointer, updateSelection],
+  );
+
+  useEffect(() => {
+    const handlePointerMove = (event: PointerEvent) => {
+      if (!activeHandleRef.current) return;
+      event.preventDefault();
+      handleDragMove(event.clientX);
+    };
+
+    const handlePointerUp = () => {
+      activeHandleRef.current = null;
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("pointercancel", handlePointerUp);
+
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerUp);
+    };
+  }, [handleDragMove]);
+
+  const handleWaveformPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    const waveform = waveformRef.current;
+    if (!waveform) return;
+
+    const rect = waveform.getBoundingClientRect();
+    const startX = (startPercent / 100) * rect.width;
+    const endX = (endPercent / 100) * rect.width;
+    const pointerX = event.clientX - rect.left;
+
+    activeHandleRef.current =
+      Math.abs(pointerX - startX) <= Math.abs(pointerX - endX) ? "start" : "end";
+    event.currentTarget.setPointerCapture(event.pointerId);
+    handleDragMove(event.clientX);
+  };
+
+  const handleHandlePointerDown = (
+    event: React.PointerEvent<HTMLButtonElement>,
+    handle: DragHandle,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    activeHandleRef.current = handle;
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const handleTogglePlayback = async () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    if (isPlaying) {
+      audio.pause();
+      setIsPlaying(false);
+      return;
+    }
+
+    if (audio.currentTime < selectedStart || audio.currentTime >= selectedEnd) {
+      audio.currentTime = selectedStart;
+    }
+
+    try {
+      await audio.play();
+      setIsPlaying(true);
+    } catch {
+      setIsPlaying(false);
+    }
+  };
+
+  const readout = useMemo(
+    () => ({
+      start: formatTimestamp(selectedStart),
+      end: formatTimestamp(selectedEnd),
+      duration: formatClipDuration(selectedEnd - selectedStart),
+    }),
+    [selectedEnd, selectedStart],
+  );
 
   return (
-    <div className="space-y-2 rounded-[12px] border border-border bg-surface p-3">
+    <div className="rounded-[12px] border border-border bg-surface p-3">
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={handleTogglePlayback}
+          disabled={!audioUrl}
+          className="soft-focus-ring flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-text-primary text-white transition-colors hover:bg-primary-hover disabled:opacity-50"
+          aria-label={isPlaying ? "Pause selected clip" : "Play selected clip"}
+        >
+          {isPlaying ? (
+            <Pause className="h-4 w-4" aria-hidden="true" />
+          ) : (
+            <Play className="ml-0.5 h-4 w-4" aria-hidden="true" />
+          )}
+        </button>
+
+        <div className="min-w-0 flex-1">
+          <div
+            ref={waveformRef}
+            className="relative h-[72px] cursor-ew-resize touch-none select-none"
+            onPointerDown={handleWaveformPointerDown}
+          >
+            <canvas
+              ref={canvasRef}
+              className="h-full w-full rounded-[10px]"
+              aria-hidden="true"
+            />
+            <div
+              className="pointer-events-none absolute inset-y-1 rounded-[6px] bg-primary/10"
+              style={{
+                left: `${startPercent}%`,
+                width: `${Math.max(0, endPercent - startPercent)}%`,
+              }}
+            />
+            <Handle
+              label={`Clip start ${readout.start}`}
+              position={startPercent}
+              onPointerDown={(event) => handleHandlePointerDown(event, "start")}
+            />
+            <Handle
+              label={`Clip end ${readout.end}`}
+              position={endPercent}
+              onPointerDown={(event) => handleHandlePointerDown(event, "end")}
+            />
+            {isDecoding && (
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-[10px] bg-surface/70 text-xs font-medium text-text-muted backdrop-blur-[1px]">
+                Drawing waveform...
+              </div>
+            )}
+          </div>
+
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-medium text-text-muted">
+            <span>{readout.start}</span>
+            <span className="text-border">-</span>
+            <span>{readout.end}</span>
+            <span className="text-primary-hover">{readout.duration}</span>
+          </div>
+        </div>
+      </div>
+
+      {decodeError && (
+        <p className="mt-2 text-xs text-text-muted">
+          Waveform unavailable, but selected-region playback and downloads still work.
+        </p>
+      )}
+
       {audioUrl ? (
-        <audio
-          ref={audioRef}
-          src={audioUrl}
-          controls
-          preload="auto"
-          className="audio-control w-full"
-        />
+        <audio ref={audioRef} src={audioUrl} preload="auto" className="hidden" />
       ) : null}
-      <p className="text-xs text-text-muted">
-        {mins}:{secs.toString().padStart(2, "0")} preview
-      </p>
     </div>
   );
+}
+
+function Handle({
+  label,
+  position,
+  onPointerDown,
+}: {
+  label: string;
+  position: number;
+  onPointerDown: (event: React.PointerEvent<HTMLButtonElement>) => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      onPointerDown={onPointerDown}
+      className="soft-focus-ring absolute top-0 z-10 h-full w-7 -translate-x-1/2 cursor-ew-resize touch-none"
+      style={{ left: `${position}%` }}
+    >
+      <span className="mx-auto block h-full w-0.5 rounded-full bg-primary shadow-[0_0_0_1px_rgba(255,255,255,0.95)]" />
+      <span className="absolute left-1/2 top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-primary shadow-sm" />
+    </button>
+  );
+}
+
+function drawWaveform({
+  audioBuffer,
+  canvas,
+  contextStart,
+  contextEnd,
+  selectedStart,
+  selectedEnd,
+  width,
+}: {
+  audioBuffer: AudioBuffer | null;
+  canvas: HTMLCanvasElement | null;
+  contextStart: number;
+  contextEnd: number;
+  selectedStart: number;
+  selectedEnd: number;
+  width: number;
+}) {
+  if (!canvas || width <= 0) return;
+
+  const pixelRatio = window.devicePixelRatio || 1;
+  const height = WAVEFORM_HEIGHT;
+  canvas.width = Math.floor(width * pixelRatio);
+  canvas.height = Math.floor(height * pixelRatio);
+  canvas.style.width = `${width}px`;
+  canvas.style.height = `${height}px`;
+
+  const context = canvas.getContext("2d");
+  if (!context) return;
+
+  context.scale(pixelRatio, pixelRatio);
+  context.clearRect(0, 0, width, height);
+
+  const styles = getComputedStyle(document.documentElement);
+  const mutedColor = styles.getPropertyValue("--waveform-muted").trim() || "#D8D1CA";
+  const selectedColor = styles.getPropertyValue("--primary").trim() || "#F97316";
+  const baselineColor = styles.getPropertyValue("--border").trim() || "#EADFD3";
+  const centerY = height / 2;
+
+  context.strokeStyle = baselineColor;
+  context.lineWidth = 1;
+  context.beginPath();
+  context.moveTo(0, centerY);
+  context.lineTo(width, centerY);
+  context.stroke();
+
+  if (!audioBuffer) {
+    drawPlaceholderWaveform(context, width, height, mutedColor);
+    return;
+  }
+
+  const channelData = audioBuffer.getChannelData(0);
+  const sampleRate = audioBuffer.sampleRate;
+  const startSample = Math.max(0, Math.floor(contextStart * sampleRate));
+  const endSample = Math.min(
+    channelData.length,
+    Math.ceil(contextEnd * sampleRate),
+  );
+  const samplesPerPixel = Math.max(1, Math.floor((endSample - startSample) / width));
+  const barWidth = 2;
+  const gap = 2;
+  const step = barWidth + gap;
+
+  for (let x = 0; x < width; x += step) {
+    const sampleIndex = startSample + Math.floor(x * samplesPerPixel);
+    const maxSampleIndex = Math.min(sampleIndex + samplesPerPixel * step, endSample);
+    let peak = 0;
+
+    for (let i = sampleIndex; i < maxSampleIndex; i += 1) {
+      peak = Math.max(peak, Math.abs(channelData[i] ?? 0));
+    }
+
+    const time = contextStart + (x / width) * (contextEnd - contextStart);
+    const barHeight = Math.max(5, peak * (height - 10));
+    context.fillStyle =
+      time >= selectedStart && time <= selectedEnd ? selectedColor : mutedColor;
+    context.fillRect(
+      x,
+      centerY - barHeight / 2,
+      barWidth,
+      Math.max(4, barHeight),
+    );
+  }
+}
+
+function drawPlaceholderWaveform(
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  color: string,
+) {
+  const centerY = height / 2;
+  context.fillStyle = color;
+
+  for (let x = 0; x < width; x += 4) {
+    const barHeight = 8 + Math.sin(x / 9) * 10 + Math.sin(x / 17) * 7;
+    context.fillRect(x, centerY - barHeight / 2, 2, Math.max(4, barHeight));
+  }
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function roundTime(value: number) {
+  return Math.round(value * 10) / 10;
+}
+
+function formatTimestamp(seconds: number) {
+  const roundedSeconds = Math.max(0, Math.round(seconds));
+  const hours = Math.floor(roundedSeconds / 3600);
+  const minutes = Math.floor((roundedSeconds % 3600) / 60);
+  const secs = roundedSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}:${minutes.toString().padStart(2, "0")}:${secs
+      .toString()
+      .padStart(2, "0")}`;
+  }
+
+  return `${minutes}:${secs.toString().padStart(2, "0")}`;
+}
+
+function formatClipDuration(seconds: number) {
+  return `${Math.max(MIN_CLIP_DURATION_SECONDS, Math.round(seconds))} sec clip`;
 }

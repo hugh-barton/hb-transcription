@@ -1,10 +1,13 @@
-import { NextRequest, NextResponse } from "next/server";
-import { startTranscriptionJob } from "@/lib/assemblyai";
+import { NextResponse } from "next/server";
+import { getTranscriptionJobStatus } from "@/lib/assemblyai";
 
 export const runtime = "nodejs";
-export const maxDuration = 300;
+export const maxDuration = 60;
 
-export async function POST(request: NextRequest) {
+export async function GET(
+  _request: Request,
+  context: { params: Promise<{ id: string }> },
+) {
   try {
     const apiKey = process.env.ASSEMBLYAI_API_KEY;
 
@@ -15,18 +18,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!request.body) {
+    const { id } = await context.params;
+
+    if (!id) {
       return NextResponse.json(
-        { error: "No file body provided" },
+        { error: "No transcript ID provided" },
         { status: 400 },
       );
     }
 
-    const language = request.nextUrl.searchParams.get("language")?.trim();
-    const result = await startTranscriptionJob(request.body, apiKey, {
-      language: language || undefined,
-    });
-
+    const result = await getTranscriptionJobStatus(id, apiKey);
     return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json(

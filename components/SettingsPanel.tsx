@@ -3,9 +3,7 @@
 import { useState } from "react";
 
 interface Settings {
-  model: string;
   language: string;
-  responseFormat: "json" | "text" | "srt" | "verbose_json";
 }
 
 interface SettingsPanelProps {
@@ -19,7 +17,7 @@ export default function SettingsPanel({
 }: SettingsPanelProps) {
   const [apiKey, setApiKey] = useState(() => {
     if (typeof window === "undefined") return "";
-    return localStorage.getItem("openai_api_key") ?? "";
+    return localStorage.getItem("assemblyai_api_key") ?? "";
   });
   const [saveStatus, setSaveStatus] = useState<"idle" | "saved" | "error">(
     "idle",
@@ -27,7 +25,7 @@ export default function SettingsPanel({
 
   const handleSave = () => {
     try {
-      localStorage.setItem("openai_api_key", apiKey.trim());
+      localStorage.setItem("assemblyai_api_key", apiKey.trim());
       setSaveStatus("saved");
       setTimeout(() => setSaveStatus("idle"), 2000);
     } catch {
@@ -36,7 +34,7 @@ export default function SettingsPanel({
   };
 
   const handleClear = () => {
-    localStorage.removeItem("openai_api_key");
+    localStorage.removeItem("assemblyai_api_key");
     setApiKey("");
     setSaveStatus("saved");
     setTimeout(() => setSaveStatus("idle"), 2000);
@@ -63,19 +61,19 @@ export default function SettingsPanel({
             htmlFor="apiKey"
             className="mb-2 block text-sm font-semibold text-primary-hover"
           >
-            OpenAI API Key
+            AssemblyAI API Key
           </label>
           <input
             type="password"
             id="apiKey"
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
-            placeholder="sk-..."
+            placeholder="AssemblyAI API key"
             className="soft-focus-ring w-full rounded-[14px] border border-border bg-surface px-4 py-3 text-text-primary placeholder-text-muted transition-colors focus:border-primary"
           />
           <p className="mt-2 text-xs leading-relaxed text-text-muted">
             Your API key is stored locally in your browser. The current
-            transcription route still uses the configured server environment key.
+            transcription route uses the configured server environment key.
           </p>
           <div className="mt-3 flex gap-2">
             <button
@@ -104,32 +102,6 @@ export default function SettingsPanel({
 
         <div>
           <label
-            htmlFor="model"
-            className="mb-2 block text-sm font-semibold text-primary-hover"
-          >
-            Whisper Model
-          </label>
-          <select
-            id="model"
-            value={settings.model}
-            onChange={(e) =>
-              onSettingsChange({ ...settings, model: e.target.value })
-            }
-            className="soft-focus-ring w-full rounded-[14px] border border-border bg-surface px-4 py-3 text-text-primary transition-colors focus:border-primary"
-          >
-            <option value="whisper-1">whisper-1 (default)</option>
-            <option value="whisper-1-large-v2">
-              whisper-1-large-v2 (advanced)
-            </option>
-          </select>
-          <p className="mt-2 text-xs leading-relaxed text-text-muted">
-            whisper-1 is recommended for most use cases. Large models are more
-            accurate but slower.
-          </p>
-        </div>
-
-        <div>
-          <label
             htmlFor="language"
             className="mb-2 block text-sm font-semibold text-primary-hover"
           >
@@ -147,38 +119,7 @@ export default function SettingsPanel({
           />
           <p className="mt-2 text-xs leading-relaxed text-text-muted">
             Optional language code to improve accuracy. Leave empty to let
-            Whisper auto-detect.
-          </p>
-        </div>
-
-        <div>
-          <label
-            htmlFor="responseFormat"
-            className="mb-2 block text-sm font-semibold text-primary-hover"
-          >
-            Response Format
-          </label>
-          <select
-            id="responseFormat"
-            value={settings.responseFormat}
-            onChange={(e) =>
-              onSettingsChange({
-                ...settings,
-                responseFormat: e.target.value as Settings["responseFormat"],
-              })
-            }
-            className="soft-focus-ring w-full rounded-[14px] border border-border bg-surface px-4 py-3 text-text-primary transition-colors focus:border-primary"
-          >
-            <option value="verbose_json">
-              verbose_json (detailed with timestamps)
-            </option>
-            <option value="json">json (structured)</option>
-            <option value="text">text (plain text)</option>
-            <option value="srt">srt (subtitle format)</option>
-          </select>
-          <p className="mt-2 text-xs leading-relaxed text-text-muted">
-            verbose_json returns the richest data. Other formats return plain
-            text only.
+            AssemblyAI choose the best language route.
           </p>
         </div>
 
@@ -189,19 +130,19 @@ export default function SettingsPanel({
           <div className="space-y-1 text-sm text-text-secondary">
             <p>
               <span className="font-medium text-primary-hover">
-                Current model:
+                Speech models:
               </span>{" "}
-              {settings.model}
+              universal-3-pro, universal-2 fallback
             </p>
             <p>
               <span className="font-medium text-primary-hover">
-                OpenAI pricing:
+                Upload limit:
               </span>{" "}
-              ~$0.006 per minute of audio
+              Up to 2.2 GB via AssemblyAI upload
             </p>
             <p>
-              <span className="font-medium text-primary-hover">Free tier:</span>{" "}
-              60 minutes included
+              <span className="font-medium text-primary-hover">Mode:</span>{" "}
+              Pre-recorded transcription
             </p>
           </div>
         </div>
