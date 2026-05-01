@@ -11,7 +11,8 @@ The product direction is focused on a polished single-session workflow:
 3. Send the file to AssemblyAI pre-recorded speech-to-text.
 4. Poll the transcription job while showing a branded loading state.
 5. Detect exciting moments from transcript segments.
-6. Preview and download clipped highlights as MP3 or M4A.
+6. Preview generated highlights with an interactive waveform editor.
+7. Adjust clip start/end points, audition nearby source audio, and download edited clips as MP3 or M4A.
 
 This app no longer uses Whisper. Transcription is handled by AssemblyAI through the server routes in `app/api/transcribe`.
 
@@ -73,7 +74,7 @@ assets/
 components/
   ui/                    — ShadCN-generated primitives
   AudioUploader.tsx      — Upload, file review, loading, transcript modal, clip results/downloads
-  ClipPreview.tsx        — In-browser clip preview player using `/api/clip`
+  ClipPreview.tsx        — Client-side waveform editor, selected-region playback, and scrub preview
   SettingsPanel.tsx      — Settings modal content
   AudioPlayer.tsx        — Older reusable audio player component, not central to the current home flow
   TranscriptDisplay.tsx  — Older transcript/clip display component, not central to the current home flow
@@ -102,7 +103,8 @@ types/
 8. Client polls `/api/transcribe/[id]` every 3 seconds while AssemblyAI returns `queued` or `processing`.
 9. The loading state displays directly on the ripple background with a looping progress bar and rotating music/gold-themed messages.
 10. On completion, the polling route fetches transcript and sentence data, normalizes AssemblyAI millisecond timestamps into second-based `Segment[]`, and returns `TranscriptResult`.
-11. `AudioUploader` detects clip-worthy moments from trigger phrases, shows the **Gold Moment(s)** results page, and lets users preview/download clips as M4A or MP3.
+11. `AudioUploader` detects clip-worthy moments from trigger phrases and shows the **Gold Moment(s)** results page.
+12. Each result initializes an editable waveform selection from the generated clip window. Users can drag start/end handles, audition source context, and download the edited window as M4A or MP3.
 
 ## Main UI States
 
@@ -142,7 +144,18 @@ types/
 - Transcript opens in a modal with copy support.
 - Clip suggestions appear in a full-width **Gold Moment** / **Gold Moments** results page.
 - The top summary card says **“We found 1 gold moment!”** or **“We found n gold moments!”**, shows the uploaded session filename/metadata, includes a decorative waveform, and has a presentational **View Full Session** button.
-- Each moment card shows the native browser clip preview from `ClipPreview`, the matched transcript text, the timestamp and clip length, a working download button, an MP3/M4A selector, and a presentational kebab menu.
+- For 3+ suggestions, results use a horizontal carousel of compact moment cards. Desktop shows 4 equal-width cards per page; overflow is available by horizontal scroll or the left/right arrow buttons. With exactly 4 suggestions, the cards fill the available row without an empty trailing slot.
+- For 1-2 suggestions, results keep the wider stacked card layout.
+- Each moment card shows the interactive waveform editor from `ClipPreview`, the matched transcript quote/description, the editable timestamp/clip length, a working download button, an MP3/M4A selector, and a presentational kebab menu.
+- Compact carousel cards use only the sparkle icon plus result number as the rank marker; the quote/description is the card title, and rank captions are omitted.
+- `ClipPreview` decodes the uploaded source file with the browser Web Audio API and renders waveform peaks on a canvas. It caches browser decode promises per file, skips client waveform decoding for very large/long files, and shows 30 seconds of context before/after the generated clip when available.
+- The orange start/end playheads initialize from the generated clip window. Dragging either playhead updates the selected region, timestamp readout, playback range, and eventual download payload in real time.
+- Playheads are clamped to the visible context/source duration and enforce a 5-second minimum clip length.
+- Clicking the main play button always starts playback from the current start playhead and stops at the current end playhead.
+- Hovering over the waveform shows a dark vertical preview cursor. Clicking the waveform starts non-destructive scrub playback from that point without moving either playhead; scrub playback stops at the visible context end.
+- A Goldfish-orange playback bar appears during both selected-region playback and scrub playback, moving across the waveform in sync with `audio.currentTime`.
+- Carousel waveform previews use a compact play button aligned to the waveform centerline, with smaller clip range/readout text to preserve card vertical space.
+- Downloads are named from the result index and original upload name: `gold-1-originalfilename.m4a`, `gold-2-originalfilename.mp3`, etc. The number matches the Gold Moment’s position in the results list and the extension follows the selected format.
 - The old peak score, trigger phrase label, and **Add to Session** action are intentionally omitted from the results cards.
 - Results include a **Help us get smarter** feedback banner with a presentational **Rate Moment** button and keep the **Your audio is private and secure** footer.
 
