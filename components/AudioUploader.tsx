@@ -18,6 +18,10 @@ import { findClipSuggestions } from "@/lib/triggers";
 import { AudioFile, TranscriptResult } from "@/types";
 
 type ClipDownloadFormat = "mp3" | "m4a";
+type ClipSelection = {
+  clipStart: number;
+  clipEnd: number;
+};
 type AudioMetadataStatus = NonNullable<AudioFile["metadataStatus"]>;
 
 const HEADER_READ_BYTES = 256 * 1024;
@@ -64,6 +68,9 @@ export default function AudioUploader({
   const [downloading, setDownloading] = useState<string | null>(null);
   const [downloadFormats, setDownloadFormats] = useState<
     Record<string, ClipDownloadFormat>
+  >({});
+  const [clipSelections, setClipSelections] = useState<
+    Record<string, ClipSelection>
   >({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -197,6 +204,7 @@ export default function AudioUploader({
     setCopied(false);
     setDownloading(null);
     setDownloadFormats({});
+    setClipSelections({});
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -289,10 +297,17 @@ export default function AudioUploader({
           clipSuggestions={clipSuggestions}
           downloading={downloading}
           downloadFormats={downloadFormats}
+          clipSelections={clipSelections}
           onDownloadFormatChange={(filename, format) =>
             setDownloadFormats((current) => ({
               ...current,
               [filename]: format,
+            }))
+          }
+          onClipSelectionChange={(clipKey, selection) =>
+            setClipSelections((current) => ({
+              ...current,
+              [clipKey]: selection,
             }))
           }
           onDownloadClip={handleDownloadClip}
@@ -401,7 +416,9 @@ function SessionWorkspace({
   clipSuggestions,
   downloading,
   downloadFormats,
+  clipSelections,
   onDownloadFormatChange,
+  onClipSelectionChange,
   onDownloadClip,
   onReset,
   onTranscribe,
@@ -416,7 +433,9 @@ function SessionWorkspace({
   clipSuggestions: ReturnType<typeof findClipSuggestions>;
   downloading: string | null;
   downloadFormats: Record<string, ClipDownloadFormat>;
+  clipSelections: Record<string, ClipSelection>;
   onDownloadFormatChange: (filename: string, format: ClipDownloadFormat) => void;
+  onClipSelectionChange: (clipKey: string, selection: ClipSelection) => void;
   onDownloadClip: (
     clipStart: number,
     clipEnd: number,
@@ -471,7 +490,9 @@ function SessionWorkspace({
             clipSuggestions={clipSuggestions}
             downloading={downloading}
             downloadFormats={downloadFormats}
+            clipSelections={clipSelections}
             onDownloadFormatChange={onDownloadFormatChange}
+            onClipSelectionChange={onClipSelectionChange}
             onDownloadClip={onDownloadClip}
             onViewTranscript={onViewTranscript}
           />
@@ -727,7 +748,9 @@ function GoldMomentResultsPage({
   clipSuggestions,
   downloading,
   downloadFormats,
+  clipSelections,
   onDownloadFormatChange,
+  onClipSelectionChange,
   onDownloadClip,
   onViewTranscript,
 }: {
@@ -737,7 +760,9 @@ function GoldMomentResultsPage({
   clipSuggestions: ReturnType<typeof findClipSuggestions>;
   downloading: string | null;
   downloadFormats: Record<string, ClipDownloadFormat>;
+  clipSelections: Record<string, ClipSelection>;
   onDownloadFormatChange: (filename: string, format: ClipDownloadFormat) => void;
+  onClipSelectionChange: (clipKey: string, selection: ClipSelection) => void;
   onDownloadClip: (
     clipStart: number,
     clipEnd: number,
@@ -864,6 +889,11 @@ function GoldMomentResultsPage({
 
           <div className="space-y-4">
             {clipSuggestions.map((clip, index) => {
+              const clipKey = getClipKey(clip);
+              const clipSelection = clipSelections[clipKey] ?? {
+                clipStart: clip.clipStart,
+                clipEnd: clip.clipEnd,
+              };
               const downloadFormat = downloadFormats[clip.filename] ?? "m4a";
               const downloadFilename = replaceFileExtension(
                 clip.filename,
@@ -872,15 +902,20 @@ function GoldMomentResultsPage({
 
               return (
                 <article
-                  key={`${clip.filename}-${clip.clipStart}`}
+                  key={clipKey}
                   className="rounded-[16px] border border-border bg-surface-card p-4 shadow-[var(--shadow-card)] md:p-5"
                 >
                   <div className="grid gap-5 lg:grid-cols-[minmax(280px,0.95fr)_minmax(0,1fr)_auto] lg:items-center">
                     <div className="min-w-0">
                       <ClipPreview
                         audioFile={audioFile}
-                        clipStart={clip.clipStart}
-                        clipEnd={clip.clipEnd}
+                        clipStart={clipSelection.clipStart}
+                        clipEnd={clipSelection.clipEnd}
+                        contextClipStart={clip.clipStart}
+                        contextClipEnd={clip.clipEnd}
+                        onSelectionChange={(selection) =>
+                          onClipSelectionChange(clipKey, selection)
+                        }
                       />
                     </div>
 
@@ -893,9 +928,11 @@ function GoldMomentResultsPage({
                         &ldquo;{clip.matchedSegment.text.trim()}&rdquo;
                       </p>
                       <p className="mt-3 text-sm text-text-secondary">
-                        {formatDuration(clip.clipStart)}
+                        {formatDuration(clipSelection.clipStart)}
                         <span className="mx-2">·</span>
-                        {formatClipLength(clip.clipEnd - clip.clipStart)}
+                        {formatClipLength(
+                          clipSelection.clipEnd - clipSelection.clipStart,
+                        )}
                       </p>
                     </div>
 
@@ -904,8 +941,8 @@ function GoldMomentResultsPage({
                         type="button"
                         onClick={() =>
                           onDownloadClip(
-                            clip.clipStart,
-                            clip.clipEnd,
+                            clipSelection.clipStart,
+                            clipSelection.clipEnd,
                             clip.filename,
                             downloadFormat,
                           )
@@ -1145,6 +1182,10 @@ function formatClipLength(seconds: number) {
 
   const minutes = Math.max(1, Math.round(roundedSeconds / 60));
   return `${minutes}-minute clip`;
+}
+
+function getClipKey(clip: ReturnType<typeof findClipSuggestions>[number]) {
+  return `${clip.filename}-${clip.clipStart}-${clip.clipEnd}`;
 }
 
 function getGoldMomentLabel(count: number) {
