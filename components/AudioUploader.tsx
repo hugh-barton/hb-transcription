@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AudioLines,
+  ChevronLeft,
+  ChevronRight,
   Clock3,
   EllipsisVertical,
   FileAudio,
@@ -13,8 +15,10 @@ import {
   Sparkles,
   Waves,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import ClipPreview from "@/components/ClipPreview";
 import { findClipSuggestions } from "@/lib/triggers";
+import { cn } from "@/lib/utils";
 import { AudioFile, TranscriptResult } from "@/types";
 
 type ClipDownloadFormat = "mp3" | "m4a";
@@ -22,6 +26,7 @@ type ClipSelection = {
   clipStart: number;
   clipEnd: number;
 };
+type ClipSuggestion = ReturnType<typeof findClipSuggestions>[number];
 type AudioMetadataStatus = NonNullable<AudioFile["metadataStatus"]>;
 
 const HEADER_READ_BYTES = 256 * 1024;
@@ -450,7 +455,7 @@ function SessionWorkspace({
   const isComplete = Boolean(transcript) && !loading;
 
   return (
-    <div className="flex min-h-[inherit] flex-col gap-3 md:gap-4">
+    <div className="flex min-h-[inherit] flex-col gap-2 md:gap-2.5">
       {(loading || isComplete) && (
         <div
           className={`z-10 flex items-center justify-between ${
@@ -460,7 +465,7 @@ function SessionWorkspace({
           <button
             type="button"
             onClick={onReset}
-            className="soft-focus-ring inline-flex items-center gap-2 rounded-[12px] border border-border bg-surface px-3 py-2 text-sm font-semibold text-text-secondary transition-colors hover:bg-primary-wash hover:text-primary-hover"
+            className="soft-focus-ring inline-flex h-9 items-center gap-2 rounded-[12px] border border-border bg-surface px-3 text-sm font-semibold text-text-secondary transition-colors hover:bg-primary-wash hover:text-primary-hover"
           >
             <PlusIcon className="h-4 w-4" />
             New Session
@@ -470,7 +475,7 @@ function SessionWorkspace({
             <button
               type="button"
               onClick={onViewTranscript}
-              className="soft-focus-ring inline-flex items-center gap-2 rounded-[12px] border border-primary/25 bg-primary-wash px-3 py-2 text-sm font-semibold text-primary-hover transition-colors hover:bg-primary-soft"
+              className="soft-focus-ring inline-flex h-9 items-center gap-2 rounded-[12px] border border-primary/25 bg-primary-wash px-3 text-sm font-semibold text-primary-hover transition-colors hover:bg-primary-soft"
             >
               <TextIcon className="h-4 w-4" />
               View Transcript
@@ -781,18 +786,18 @@ function GoldMomentResultsPage({
   ].filter((item) => item && item !== "Unknown");
 
   return (
-    <section className="flex min-h-0 w-full flex-col gap-6 overflow-auto pb-2 pt-9">
-      <div className="rounded-[18px] border border-border bg-surface/78 p-5 shadow-[var(--shadow-card)] backdrop-blur-sm md:p-7">
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex min-w-0 flex-col gap-5 sm:flex-row sm:items-center">
-            <span className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full border border-primary/25 bg-surface text-primary-hover shadow-[0_14px_30px_rgba(249,115,22,0.08)]">
-              <SparkleIcon className="h-10 w-10" />
+    <section className="flex min-h-0 w-full flex-col gap-3 overflow-auto pb-1 pt-3">
+      <div className="rounded-[18px] border border-border bg-surface/78 p-4 shadow-[var(--shadow-card)] backdrop-blur-sm md:p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center">
+            <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-primary/25 bg-surface text-primary-hover shadow-[0_14px_30px_rgba(249,115,22,0.08)]">
+              <SparkleIcon className="h-7 w-7" />
             </span>
             <div className="min-w-0">
-              <h1 className="font-[family-name:var(--font-display)] text-3xl font-bold leading-tight text-text-primary md:text-[34px]">
+              <h1 className="font-[family-name:var(--font-display)] text-[28px] font-bold leading-tight text-text-primary md:text-[30px]">
                 We found {momentCount} {momentLabel.toLowerCase()}!
               </h1>
-              <p className="mt-2 text-base leading-relaxed text-text-secondary">
+              <p className="mt-1 text-sm leading-relaxed text-text-secondary md:text-base">
                 {momentCount === 1
                   ? "Here's the golden moment Goldfish found in your session."
                   : "Here are the golden moments Goldfish found in your session."}
@@ -802,28 +807,28 @@ function GoldMomentResultsPage({
 
           <button
             type="button"
-            className="soft-focus-ring inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-[12px] border border-border bg-surface px-5 text-sm font-semibold text-text-primary transition-colors hover:bg-primary-wash"
+            className="soft-focus-ring inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-[12px] border border-border bg-surface px-4 text-sm font-semibold text-text-primary transition-colors hover:bg-primary-wash"
           >
             <AudioLines className="h-4 w-4" aria-hidden="true" />
             View Full Session
           </button>
         </div>
 
-        <div className="mt-7 flex flex-col gap-5 border-t border-border pt-5 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex min-w-0 items-center gap-4">
-            <span className="flex h-20 w-20 shrink-0 items-center justify-center rounded-[12px] bg-primary-wash text-primary-hover">
-              <MusicIcon className="h-10 w-10" />
+        <div className="mt-4 flex flex-col gap-3 border-t border-border pt-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[12px] bg-primary-wash text-primary-hover">
+              <MusicIcon className="h-7 w-7" />
             </span>
             <div className="min-w-0">
-              <h2 className="truncate text-lg font-semibold text-text-primary">
+              <h2 className="truncate text-base font-semibold text-text-primary">
                 {audioFile.name}
               </h2>
-              <p className="mt-2 text-sm text-text-secondary">
+              <p className="mt-1 text-sm text-text-secondary">
                 {sessionMetadata.length > 0
                   ? sessionMetadata.join("  ·  ")
                   : "Audio file"}
               </p>
-              <p className="mt-2 text-sm text-text-muted">
+              <p className="mt-1 text-sm text-text-muted">
                 {formatFileDate(audioFile.lastModified)}
                 <span className="mx-2">·</span>
                 {formatSize(audioFile.size)}
@@ -831,7 +836,7 @@ function GoldMomentResultsPage({
             </div>
           </div>
           <div className="hidden min-w-0 flex-1 items-center justify-end lg:flex">
-            <div className="w-full max-w-[460px] text-primary/85">
+            <div className="w-full max-w-[340px] text-primary/85 [&>div]:h-14">
               <DecorativeWaveform />
             </div>
           </div>
@@ -867,15 +872,15 @@ function GoldMomentResultsPage({
         </div>
       ) : (
         <>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-lg font-semibold text-text-primary">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-base font-semibold text-text-primary">
               {momentLabel} ({momentCount})
             </h2>
             <label className="flex items-center gap-3 text-sm text-text-secondary">
               Sort by
               <span className="relative inline-flex">
                 <select
-                  className="soft-focus-ring h-12 appearance-none rounded-[12px] border border-border bg-surface px-4 py-2 pr-10 text-sm font-medium text-text-primary shadow-[var(--shadow-card)] outline-none"
+                  className="soft-focus-ring h-10 appearance-none rounded-[12px] border border-border bg-surface px-3 py-2 pr-9 text-sm font-medium text-text-primary shadow-[var(--shadow-card)] outline-none"
                   defaultValue="gold"
                   aria-label="Sort gold moments"
                 >
@@ -887,121 +892,53 @@ function GoldMomentResultsPage({
             </label>
           </div>
 
-          <div className="space-y-4">
-            {clipSuggestions.map((clip, index) => {
-              const clipKey = getClipKey(clip);
-              const clipSelection = clipSelections[clipKey] ?? {
-                clipStart: clip.clipStart,
-                clipEnd: clip.clipEnd,
-              };
-              const downloadFormat = downloadFormats[clip.filename] ?? "m4a";
-              const downloadFilename = replaceFileExtension(
-                clip.filename,
-                downloadFormat,
-              );
+          {clipSuggestions.length >= 3 ? (
+            <GoldMomentCarousel
+              audioFile={audioFile}
+              clipSuggestions={clipSuggestions}
+              downloading={downloading}
+              downloadFormats={downloadFormats}
+              clipSelections={clipSelections}
+              onDownloadFormatChange={onDownloadFormatChange}
+              onClipSelectionChange={onClipSelectionChange}
+              onDownloadClip={onDownloadClip}
+            />
+          ) : (
+            <div className="space-y-4">
+              {clipSuggestions.map((clip, index) => (
+                <GoldMomentStackedCard
+                  key={getClipKey(clip)}
+                  audioFile={audioFile}
+                  clip={clip}
+                  index={index}
+                  downloading={downloading}
+                  downloadFormats={downloadFormats}
+                  clipSelections={clipSelections}
+                  onDownloadFormatChange={onDownloadFormatChange}
+                  onClipSelectionChange={onClipSelectionChange}
+                  onDownloadClip={onDownloadClip}
+                />
+              ))}
+            </div>
+          )}
 
-              return (
-                <article
-                  key={clipKey}
-                  className="rounded-[16px] border border-border bg-surface-card p-4 shadow-[var(--shadow-card)] md:p-5"
-                >
-                  <div className="grid gap-5 lg:grid-cols-[minmax(280px,0.95fr)_minmax(0,1fr)_auto] lg:items-center">
-                    <div className="min-w-0">
-                      <ClipPreview
-                        audioFile={audioFile}
-                        clipStart={clipSelection.clipStart}
-                        clipEnd={clipSelection.clipEnd}
-                        contextClipStart={clip.clipStart}
-                        contextClipEnd={clip.clipEnd}
-                        onSelectionChange={(selection) =>
-                          onClipSelectionChange(clipKey, selection)
-                        }
-                      />
-                    </div>
-
-                    <div className="min-w-0 text-center lg:text-left">
-                      <div className="mx-auto mb-3 inline-flex h-9 min-w-11 items-center justify-center gap-1 rounded-[10px] border border-primary/35 bg-surface px-3 text-sm font-semibold text-primary-hover lg:mx-0">
-                        {index + 1}
-                        <SparkleIcon className="h-4 w-4" />
-                      </div>
-                      <p className="text-lg font-semibold leading-snug text-text-primary">
-                        &ldquo;{clip.matchedSegment.text.trim()}&rdquo;
-                      </p>
-                      <p className="mt-3 text-sm text-text-secondary">
-                        {formatDuration(clipSelection.clipStart)}
-                        <span className="mx-2">·</span>
-                        {formatClipLength(
-                          clipSelection.clipEnd - clipSelection.clipStart,
-                        )}
-                      </p>
-                    </div>
-
-                    <div className="flex items-center justify-center gap-3 lg:justify-end">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          onDownloadClip(
-                            clipSelection.clipStart,
-                            clipSelection.clipEnd,
-                            clip.filename,
-                            downloadFormat,
-                          )
-                        }
-                        disabled={downloading === downloadFilename}
-                        className="soft-focus-ring inline-flex h-12 w-12 items-center justify-center rounded-[12px] border border-border bg-surface text-text-primary transition-colors hover:bg-primary-wash hover:text-primary-hover disabled:opacity-60"
-                        aria-label={`Download ${downloadFilename}`}
-                      >
-                        <DownloadIcon className="h-5 w-5" />
-                      </button>
-                      <label className="relative">
-                        <span className="sr-only">Download format</span>
-                        <select
-                          value={downloadFormat}
-                          onChange={(e) =>
-                            onDownloadFormatChange(
-                              clip.filename,
-                              e.target.value as ClipDownloadFormat,
-                            )
-                          }
-                          disabled={downloading === downloadFilename}
-                          className="soft-focus-ring h-12 appearance-none rounded-[12px] border border-border bg-surface py-2 pl-3 pr-8 text-xs font-semibold uppercase text-text-primary outline-none disabled:opacity-60"
-                        >
-                          <option value="m4a">M4A</option>
-                          <option value="mp3">MP3</option>
-                        </select>
-                        <ChevronDownIcon className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
-                      </label>
-                      <button
-                        type="button"
-                        className="soft-focus-ring inline-flex h-12 w-12 items-center justify-center rounded-[12px] border border-border bg-surface text-text-primary transition-colors hover:bg-primary-wash hover:text-primary-hover"
-                        aria-label="Moment actions"
-                      >
-                        <EllipsisVertical className="h-5 w-5" aria-hidden="true" />
-                      </button>
-                    </div>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-
-          <div className="flex flex-col gap-4 rounded-[16px] border border-border bg-primary-wash/52 p-5 shadow-[var(--shadow-card)] sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-start gap-4">
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-surface text-primary-hover">
-                <SparkleIcon className="h-6 w-6" />
+          <div className="flex flex-col gap-3 rounded-[16px] border border-border bg-primary-wash/52 p-3 shadow-[var(--shadow-card)] sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface text-primary-hover">
+                <SparkleIcon className="h-5 w-5" />
               </span>
               <div>
-                <h2 className="font-semibold text-text-primary">
+                <h2 className="text-sm font-semibold text-text-primary">
                   Help us get smarter
                 </h2>
-                <p className="mt-1 text-sm text-text-secondary">
+                <p className="mt-0.5 text-xs text-text-secondary">
                   Rate this moment to help Goldfish improve its suggestions.
                 </p>
               </div>
             </div>
             <button
               type="button"
-              className="soft-focus-ring inline-flex h-12 shrink-0 items-center justify-center rounded-[12px] border border-primary/55 bg-surface px-6 text-sm font-semibold text-primary-hover transition-colors hover:bg-primary-soft"
+              className="soft-focus-ring inline-flex h-9 shrink-0 items-center justify-center rounded-[12px] border border-primary/55 bg-surface px-4 text-sm font-semibold text-primary-hover transition-colors hover:bg-primary-soft"
             >
               Rate Moment
             </button>
@@ -1010,12 +947,378 @@ function GoldMomentResultsPage({
         </>
       )}
 
-      <p className="flex items-center justify-center gap-2 pb-4 text-sm text-text-muted">
+      <p className="flex items-center justify-center gap-2 pb-2 text-xs text-text-muted">
         <Lock className="h-4 w-4" aria-hidden="true" />
         Your audio is private and secure
       </p>
     </section>
   );
+}
+
+type GoldMomentCardProps = {
+  audioFile: AudioFile;
+  clip: ClipSuggestion;
+  index: number;
+  downloading: string | null;
+  downloadFormats: Record<string, ClipDownloadFormat>;
+  clipSelections: Record<string, ClipSelection>;
+  onDownloadFormatChange: (filename: string, format: ClipDownloadFormat) => void;
+  onClipSelectionChange: (clipKey: string, selection: ClipSelection) => void;
+  onDownloadClip: (
+    clipStart: number,
+    clipEnd: number,
+    filename: string,
+    format: ClipDownloadFormat,
+  ) => void;
+};
+
+type GoldMomentCarouselProps = Omit<GoldMomentCardProps, "clip" | "index"> & {
+  clipSuggestions: ClipSuggestion[];
+};
+
+function GoldMomentCarousel({
+  audioFile,
+  clipSuggestions,
+  downloading,
+  downloadFormats,
+  clipSelections,
+  onDownloadFormatChange,
+  onClipSelectionChange,
+  onDownloadClip,
+}: GoldMomentCarouselProps) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const updateScrollState = useCallback(() => {
+    const scroller = scrollRef.current;
+    if (!scroller) return;
+
+    const maxScrollLeft = scroller.scrollWidth - scroller.clientWidth;
+    setCanScrollLeft(scroller.scrollLeft > 2);
+    setCanScrollRight(scroller.scrollLeft < maxScrollLeft - 2);
+  }, []);
+
+  useEffect(() => {
+    updateScrollState();
+
+    const scroller = scrollRef.current;
+    if (!scroller) return;
+
+    const resizeObserver = new ResizeObserver(updateScrollState);
+    resizeObserver.observe(scroller);
+
+    return () => resizeObserver.disconnect();
+  }, [clipSuggestions.length, updateScrollState]);
+
+  const scrollByPage = (direction: -1 | 1) => {
+    const scroller = scrollRef.current;
+    if (!scroller) return;
+
+    const firstCard = scroller.querySelector<HTMLElement>(
+      "[data-gold-moment-card]",
+    );
+    const styles = window.getComputedStyle(scroller);
+    const gap = Number.parseFloat(styles.columnGap || styles.gap || "0") || 0;
+    const cardStep = firstCard ? firstCard.offsetWidth + gap : 0;
+    const pageStep = cardStep > 0 ? cardStep * 4 : scroller.clientWidth;
+
+    scroller.scrollBy({
+      left: direction * pageStep,
+      behavior: "smooth",
+    });
+  };
+
+  return (
+    <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 sm:gap-3">
+      <Button
+        type="button"
+        variant="outline"
+        size="icon-lg"
+        onClick={() => scrollByPage(-1)}
+        disabled={!canScrollLeft}
+        aria-label="Previous gold moments"
+        className="rounded-full border-border bg-surface text-text-primary shadow-[var(--shadow-card)] hover:bg-primary-wash hover:text-primary-hover disabled:opacity-45"
+      >
+        <ChevronLeft className="h-5 w-5" aria-hidden="true" />
+      </Button>
+
+      <div
+        ref={scrollRef}
+        onScroll={updateScrollState}
+        className="flex min-w-0 snap-x snap-mandatory gap-3 overflow-x-auto scroll-smooth pb-2"
+        aria-label="Gold moment cards"
+      >
+        {clipSuggestions.map((clip, index) => (
+          <GoldMomentCarouselCard
+            key={getClipKey(clip)}
+            audioFile={audioFile}
+            clip={clip}
+            index={index}
+            downloading={downloading}
+            downloadFormats={downloadFormats}
+            clipSelections={clipSelections}
+            onDownloadFormatChange={onDownloadFormatChange}
+            onClipSelectionChange={onClipSelectionChange}
+            onDownloadClip={onDownloadClip}
+          />
+        ))}
+      </div>
+
+      <Button
+        type="button"
+        variant="outline"
+        size="icon-lg"
+        onClick={() => scrollByPage(1)}
+        disabled={!canScrollRight}
+        aria-label="Next gold moments"
+        className="rounded-full border-border bg-surface text-text-primary shadow-[var(--shadow-card)] hover:bg-primary-wash hover:text-primary-hover disabled:opacity-45"
+      >
+        <ChevronRight className="h-5 w-5" aria-hidden="true" />
+      </Button>
+    </div>
+  );
+}
+
+function GoldMomentCarouselCard(props: GoldMomentCardProps) {
+  const { clip, index } = props;
+  const { clipKey, clipSelection, downloadFormat, downloadFilename } =
+    getGoldMomentCardState(props);
+
+  return (
+    <article
+      data-gold-moment-card
+      className="flex min-w-[232px] basis-[76vw] snap-start flex-col rounded-[16px] border border-border bg-surface-card p-3 shadow-[var(--shadow-card)] sm:basis-[calc(50%_-_0.375rem)] md:basis-[calc(33.333333%_-_0.5rem)] xl:basis-[calc(25%_-_0.5625rem)]"
+    >
+      <div className="mb-3 flex items-start justify-between gap-2">
+        <div
+          className="inline-flex h-9 items-center gap-1 rounded-[10px] border border-primary/35 bg-surface px-2.5 text-[13px] font-semibold text-primary-hover"
+          aria-label={`Gold moment ${index + 1}`}
+        >
+          <SparkleIcon className="h-4 w-4" aria-hidden="true" />
+          {index + 1}
+        </div>
+        <button
+          type="button"
+          className="soft-focus-ring inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] border border-border bg-surface text-text-primary transition-colors hover:bg-primary-wash hover:text-primary-hover"
+          aria-label="Moment actions"
+        >
+          <EllipsisVertical className="h-4 w-4" aria-hidden="true" />
+        </button>
+      </div>
+
+      <div className="min-w-0">
+        <ClipPreview
+          audioFile={props.audioFile}
+          clipStart={clipSelection.clipStart}
+          clipEnd={clipSelection.clipEnd}
+          contextClipStart={clip.clipStart}
+          contextClipEnd={clip.clipEnd}
+          compact
+          onSelectionChange={(selection) =>
+            props.onClipSelectionChange(clipKey, selection)
+          }
+        />
+      </div>
+
+      <div className="mt-3 flex flex-1 flex-col">
+        <p className="line-clamp-3 text-base font-semibold leading-snug text-text-primary">
+          &ldquo;{clip.matchedSegment.text.trim()}&rdquo;
+        </p>
+        <p className="mt-2 text-sm text-text-secondary">
+          {formatDuration(clipSelection.clipStart)}
+          <span className="mx-2">·</span>
+          {formatClipLength(clipSelection.clipEnd - clipSelection.clipStart)}
+        </p>
+
+        <GoldMomentDownloadControls
+          className="mt-auto pt-3"
+          clip={clip}
+          clipSelection={clipSelection}
+          downloadFilename={downloadFilename}
+          downloadFormat={downloadFormat}
+          downloading={props.downloading}
+          onDownloadFormatChange={props.onDownloadFormatChange}
+          onDownloadClip={props.onDownloadClip}
+          compact
+        />
+      </div>
+    </article>
+  );
+}
+
+function GoldMomentStackedCard(props: GoldMomentCardProps) {
+  const { audioFile, clip, index } = props;
+  const { clipKey, clipSelection, downloadFormat, downloadFilename } =
+    getGoldMomentCardState(props);
+
+  return (
+    <article className="rounded-[16px] border border-border bg-surface-card p-4 shadow-[var(--shadow-card)] md:p-5">
+      <div className="grid gap-5 lg:grid-cols-[minmax(280px,0.95fr)_minmax(0,1fr)_auto] lg:items-center">
+        <div className="min-w-0">
+          <ClipPreview
+            audioFile={audioFile}
+            clipStart={clipSelection.clipStart}
+            clipEnd={clipSelection.clipEnd}
+            contextClipStart={clip.clipStart}
+            contextClipEnd={clip.clipEnd}
+            onSelectionChange={(selection) =>
+              props.onClipSelectionChange(clipKey, selection)
+            }
+          />
+        </div>
+
+        <div className="min-w-0 text-center lg:text-left">
+          <div className="mx-auto mb-3 inline-flex h-9 min-w-11 items-center justify-center gap-1 rounded-[10px] border border-primary/35 bg-surface px-3 text-sm font-semibold text-primary-hover lg:mx-0">
+            {index + 1}
+            <SparkleIcon className="h-4 w-4" />
+          </div>
+          <p className="text-lg font-semibold leading-snug text-text-primary">
+            &ldquo;{clip.matchedSegment.text.trim()}&rdquo;
+          </p>
+          <p className="mt-3 text-sm text-text-secondary">
+            {formatDuration(clipSelection.clipStart)}
+            <span className="mx-2">·</span>
+            {formatClipLength(clipSelection.clipEnd - clipSelection.clipStart)}
+          </p>
+        </div>
+
+        <GoldMomentDownloadControls
+          clip={clip}
+          clipSelection={clipSelection}
+          downloadFilename={downloadFilename}
+          downloadFormat={downloadFormat}
+          downloading={props.downloading}
+          onDownloadFormatChange={props.onDownloadFormatChange}
+          onDownloadClip={props.onDownloadClip}
+          showActions
+        />
+      </div>
+    </article>
+  );
+}
+
+function GoldMomentDownloadControls({
+  className,
+  clip,
+  clipSelection,
+  downloadFilename,
+  downloadFormat,
+  downloading,
+  onDownloadFormatChange,
+  onDownloadClip,
+  showActions = false,
+  compact = false,
+}: {
+  className?: string;
+  clip: ClipSuggestion;
+  clipSelection: ClipSelection;
+  downloadFilename: string;
+  downloadFormat: ClipDownloadFormat;
+  downloading: string | null;
+  onDownloadFormatChange: (filename: string, format: ClipDownloadFormat) => void;
+  onDownloadClip: (
+    clipStart: number,
+    clipEnd: number,
+    filename: string,
+    format: ClipDownloadFormat,
+  ) => void;
+  showActions?: boolean;
+  compact?: boolean;
+}) {
+  const controlSize = compact ? "h-10 w-10" : "h-12 w-12";
+  const selectSize = compact ? "h-10" : "h-12";
+
+  return (
+    <div
+      className={cn(
+        "flex items-center justify-center gap-3 lg:justify-end",
+        className,
+      )}
+    >
+      <button
+        type="button"
+        onClick={() =>
+          onDownloadClip(
+            clipSelection.clipStart,
+            clipSelection.clipEnd,
+            downloadFilename,
+            downloadFormat,
+          )
+        }
+        disabled={downloading === downloadFilename}
+        className={cn(
+          "soft-focus-ring inline-flex items-center justify-center rounded-[12px] border border-border bg-surface text-text-primary transition-colors hover:bg-primary-wash hover:text-primary-hover disabled:opacity-60",
+          controlSize,
+        )}
+        aria-label={`Download ${downloadFilename}`}
+      >
+        <DownloadIcon className="h-5 w-5" />
+      </button>
+      <label className="relative">
+        <span className="sr-only">Download format</span>
+        <select
+          value={downloadFormat}
+          onChange={(e) =>
+            onDownloadFormatChange(
+              clip.filename,
+              e.target.value as ClipDownloadFormat,
+            )
+          }
+          disabled={downloading === downloadFilename}
+          className={cn(
+            "soft-focus-ring appearance-none rounded-[12px] border border-border bg-surface py-2 pl-3 pr-8 text-xs font-semibold uppercase text-text-primary outline-none disabled:opacity-60",
+            selectSize,
+          )}
+        >
+          <option value="m4a">M4A</option>
+          <option value="mp3">MP3</option>
+        </select>
+        <ChevronDownIcon className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
+      </label>
+      {showActions && (
+        <button
+          type="button"
+          className={cn(
+            "soft-focus-ring inline-flex items-center justify-center rounded-[12px] border border-border bg-surface text-text-primary transition-colors hover:bg-primary-wash hover:text-primary-hover",
+            controlSize,
+          )}
+          aria-label="Moment actions"
+        >
+          <EllipsisVertical className="h-5 w-5" aria-hidden="true" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+function getGoldMomentCardState({
+  audioFile,
+  clip,
+  index,
+  clipSelections,
+  downloadFormats,
+}: Pick<
+  GoldMomentCardProps,
+  "audioFile" | "clip" | "index" | "clipSelections" | "downloadFormats"
+>) {
+  const clipKey = getClipKey(clip);
+  const clipSelection = clipSelections[clipKey] ?? {
+    clipStart: clip.clipStart,
+    clipEnd: clip.clipEnd,
+  };
+  const downloadFormat = downloadFormats[clip.filename] ?? "m4a";
+  const downloadFilename = replaceFileExtension(
+    getGoldMomentDownloadFilename(audioFile.name, index),
+    downloadFormat,
+  );
+
+  return {
+    clipKey,
+    clipSelection,
+    downloadFormat,
+    downloadFilename,
+  };
 }
 
 function TranscriptModal({
@@ -1186,6 +1489,17 @@ function formatClipLength(seconds: number) {
 
 function getClipKey(clip: ReturnType<typeof findClipSuggestions>[number]) {
   return `${clip.filename}-${clip.clipStart}-${clip.clipEnd}`;
+}
+
+function getGoldMomentDownloadFilename(originalFilename: string, index: number) {
+  const safeOriginalFilename = originalFilename
+    .trim()
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+
+  return `gold-${index + 1}-${safeOriginalFilename || "session"}`;
 }
 
 function getGoldMomentLabel(count: number) {
