@@ -22,7 +22,7 @@ export default function OnboardingPage() {
 
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute left-1/2 top-1/2 z-[5] hidden w-[min(52.7vw,765px)] [transform:translate(-64.65%,-48.82%)] lg:block"
+        className="pointer-events-none absolute left-[calc(50%+95px)] top-1/2 z-[5] hidden w-[min(52.7vw,765px)] [transform:translate(-64.65%,-48.82%)] lg:block"
       >
         <Image
           src={goldfishHeadphones}
@@ -48,8 +48,8 @@ export default function OnboardingPage() {
           </span>
         </div>
 
-        <section className="relative grid flex-1 items-center gap-12 py-10 lg:grid-cols-[minmax(520px,0.9fr)_minmax(300px,1fr)_minmax(360px,0.82fr)] lg:gap-0 lg:py-0">
-          <div className="relative z-10 mx-auto flex w-full max-w-[620px] flex-col items-start lg:mx-0 lg:max-w-[660px] lg:self-center xl:max-w-[700px]">
+        <section className="relative grid flex-1 items-center gap-12 py-10 lg:grid-cols-[minmax(520px,0.95fr)_minmax(220px,0.72fr)_minmax(380px,0.9fr)] lg:gap-0 lg:py-0 xl:grid-cols-[minmax(560px,0.95fr)_minmax(220px,0.72fr)_minmax(400px,0.9fr)]">
+          <div className="relative z-10 mx-auto flex w-full max-w-[620px] flex-col items-start lg:mx-0 lg:h-[520px] lg:max-w-[660px] lg:self-center xl:max-w-[700px]">
             <div className="relative mx-auto aspect-square w-full max-w-[640px] lg:hidden">
               <Image
                 src={goldfishHeadphones}
@@ -61,19 +61,19 @@ export default function OnboardingPage() {
               />
             </div>
 
-            <div className="relative -mt-16 aspect-square w-[min(86vw,520px)] sm:-mt-24 lg:mt-0 lg:-ml-[190px] lg:w-[650px] lg:-translate-y-20 xl:-ml-[205px] xl:w-[700px] xl:-translate-y-24">
+            <div className="relative -mt-16 aspect-square w-[min(86vw,520px)] sm:-mt-24 lg:absolute lg:left-0 lg:top-[-320px] lg:mt-0 lg:-ml-[220px] lg:w-[756px] xl:-ml-[224px] xl:w-[798px]">
               <Image
                 src={youMakeMusicTitle}
                 alt="You make music. Goldfish finds the magic."
                 fill
                 priority
-                sizes="(max-width: 1024px) 86vw, 700px"
+                sizes="(max-width: 1024px) 86vw, 798px"
                 className="select-none object-contain"
               />
             </div>
 
-            <div className="-mt-16 max-w-[620px] text-left sm:-mt-20 lg:-mt-44 lg:max-w-[660px] lg:pl-1 xl:-mt-48 xl:max-w-[700px]">
-              <h1 className="font-[family-name:var(--font-display)] text-[34px] font-bold leading-[1.08] text-text-primary sm:text-[42px] lg:text-[45px] xl:text-[50px]">
+            <div className="-mt-16 max-w-[620px] text-left sm:-mt-20 lg:absolute lg:left-0 lg:top-[275px] lg:mt-0 lg:max-w-[660px] lg:pl-1 xl:max-w-[700px]">
+              <h1 className="font-[family-name:var(--font-display)] text-[32px] font-semibold leading-[1.08] text-text-primary sm:text-[40px] lg:text-[42px] xl:text-[46px]">
                 <span className="lg:whitespace-nowrap">Your best ideas</span>
                 <br />
                 <span className="lg:whitespace-nowrap">
