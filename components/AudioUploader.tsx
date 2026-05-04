@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ChangeEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   AudioLines,
   ChevronLeft,
@@ -16,7 +23,7 @@ import {
   Waves,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import ClipPreview from "@/components/ClipPreview";
+import ClipPreview, { type ClipPreviewHandle } from "@/components/ClipPreview";
 import { findClipSuggestions } from "@/lib/triggers";
 import { cn } from "@/lib/utils";
 import { AudioFile, TranscriptResult } from "@/types";
@@ -28,7 +35,13 @@ type ClipSelection = {
 };
 type ClipSuggestion = ReturnType<typeof findClipSuggestions>[number];
 type AudioMetadataStatus = NonNullable<AudioFile["metadataStatus"]>;
+type GoldMomentSortOption = "time-asc" | "time-desc";
+type ClipPreviewRefCallback = (
+  clipKey: string,
+) => (preview: ClipPreviewHandle | null) => void;
 
+const GOLD_MOMENT_DESKTOP_WINDOW_SIZE = 4;
+const GOLD_MOMENT_MOBILE_WINDOW_SIZE = 1;
 const HEADER_READ_BYTES = 256 * 1024;
 const WAVEFORM_BARS = [
   16, 24, 18, 34, 28, 46, 36, 58, 42, 66, 48, 74, 56, 88, 46, 70, 54, 64, 44,
@@ -489,6 +502,7 @@ function SessionWorkspace({
       ) : isComplete ? (
         <div className="mx-auto flex min-h-0 w-full flex-1">
           <GoldMomentResultsPage
+            key={`${audioFile.name}-${audioFile.lastModified}-${transcript?.created_at ?? "pending"}-${clipSuggestions.length}`}
             audioFile={audioFile}
             transcript={transcript}
             error={error}
@@ -778,12 +792,77 @@ function GoldMomentResultsPage({
 }) {
   const momentCount = clipSuggestions.length;
   const momentLabel = getGoldMomentLabel(momentCount);
+  const [sortOption, setSortOption] =
+    useState<GoldMomentSortOption>("time-asc");
+  const [isSortAnimating, setIsSortAnimating] = useState(false);
+  const clipPreviewHandlesRef = useRef(new Map<string, ClipPreviewHandle>());
+  const sortAnimationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const sessionMetadata = [
     audioFile.format || getFileFormat(audioFile),
     formatSampleRate(audioFile.sampleRate),
     formatChannels(audioFile.channels),
     formatReviewDuration(audioFile.duration),
   ].filter((item) => item && item !== "Unknown");
+  const registerClipPreviewRef = useCallback<ClipPreviewRefCallback>(
+    (clipKey) => (preview) => {
+      if (preview) {
+        clipPreviewHandlesRef.current.set(clipKey, preview);
+      } else {
+        clipPreviewHandlesRef.current.delete(clipKey);
+      }
+    },
+    [],
+  );
+  const handleClipPlaybackStart = useCallback((activeClipKey: string) => {
+    clipPreviewHandlesRef.current.forEach((preview, clipKey) => {
+      if (clipKey !== activeClipKey) {
+        preview.pausePlayback();
+      }
+    });
+  }, []);
+  const pauseAllClipPreviews = useCallback(() => {
+    clipPreviewHandlesRef.current.forEach((preview) => {
+      preview.pausePlayback();
+    });
+  }, []);
+  const sortedClipSuggestions = useMemo(() => {
+    return [...clipSuggestions].sort((a, b) => {
+      const timeDifference = a.clipStart - b.clipStart;
+      const fallbackDifference =
+        a.clipEnd - b.clipEnd || a.filename.localeCompare(b.filename);
+      const ascendingDifference = timeDifference || fallbackDifference;
+      return sortOption === "time-asc"
+        ? ascendingDifference
+        : -ascendingDifference;
+    });
+  }, [clipSuggestions, sortOption]);
+  const handleSortOptionChange = (
+    event: ChangeEvent<HTMLSelectElement>,
+  ) => {
+    const nextSortOption = event.target.value as GoldMomentSortOption;
+    if (nextSortOption === sortOption) return;
+
+    pauseAllClipPreviews();
+    setSortOption(nextSortOption);
+    setIsSortAnimating(true);
+    if (sortAnimationTimeoutRef.current) {
+      clearTimeout(sortAnimationTimeoutRef.current);
+    }
+    sortAnimationTimeoutRef.current = setTimeout(() => {
+      setIsSortAnimating(false);
+      sortAnimationTimeoutRef.current = null;
+    }, 420);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (sortAnimationTimeoutRef.current) {
+        clearTimeout(sortAnimationTimeoutRef.current);
+      }
+    };
+  }, []);
 
   return (
     <section className="flex min-h-0 w-full flex-col gap-3 overflow-auto pb-1 pt-3">
@@ -804,14 +883,6 @@ function GoldMomentResultsPage({
               </p>
             </div>
           </div>
-
-          <button
-            type="button"
-            className="soft-focus-ring inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-[12px] border border-border bg-surface px-4 text-sm font-semibold text-text-primary transition-colors hover:bg-primary-wash"
-          >
-            <AudioLines className="h-4 w-4" aria-hidden="true" />
-            View Full Session
-          </button>
         </div>
 
         <div className="mt-4 flex flex-col gap-3 border-t border-border pt-4 lg:flex-row lg:items-center lg:justify-between">
@@ -835,11 +906,13 @@ function GoldMomentResultsPage({
               </p>
             </div>
           </div>
-          <div className="hidden min-w-0 flex-1 items-center justify-end lg:flex">
-            <div className="w-full max-w-[340px] text-primary/85 [&>div]:h-14">
-              <DecorativeWaveform />
-            </div>
-          </div>
+          <button
+            type="button"
+            className="soft-focus-ring inline-flex h-10 shrink-0 items-center justify-center gap-2 self-end rounded-[12px] border border-border bg-surface px-4 text-sm font-semibold text-text-primary transition-colors hover:bg-primary-wash"
+          >
+            <AudioLines className="h-4 w-4" aria-hidden="true" />
+            View Full Session
+          </button>
         </div>
       </div>
 
@@ -881,46 +954,62 @@ function GoldMomentResultsPage({
               <span className="relative inline-flex">
                 <select
                   className="soft-focus-ring h-10 appearance-none rounded-[12px] border border-border bg-surface px-3 py-2 pr-9 text-sm font-medium text-text-primary shadow-[var(--shadow-card)] outline-none"
-                  defaultValue="gold"
+                  value={sortOption}
+                  onChange={handleSortOptionChange}
                   aria-label="Sort gold moments"
                 >
-                  <option value="gold">Gold Moments</option>
-                  <option value="time">Session Time</option>
+                  <option value="time-asc">Time: Ascending</option>
+                  <option value="time-desc">Time: Descending</option>
                 </select>
                 <ChevronDownIcon className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
               </span>
             </label>
           </div>
 
-          {clipSuggestions.length >= 3 ? (
-            <GoldMomentCarousel
-              audioFile={audioFile}
-              clipSuggestions={clipSuggestions}
-              downloading={downloading}
-              downloadFormats={downloadFormats}
-              clipSelections={clipSelections}
-              onDownloadFormatChange={onDownloadFormatChange}
-              onClipSelectionChange={onClipSelectionChange}
-              onDownloadClip={onDownloadClip}
-            />
-          ) : (
-            <div className="space-y-4">
-              {clipSuggestions.map((clip, index) => (
-                <GoldMomentStackedCard
-                  key={getClipKey(clip)}
-                  audioFile={audioFile}
-                  clip={clip}
-                  index={index}
-                  downloading={downloading}
-                  downloadFormats={downloadFormats}
-                  clipSelections={clipSelections}
-                  onDownloadFormatChange={onDownloadFormatChange}
-                  onClipSelectionChange={onClipSelectionChange}
-                  onDownloadClip={onDownloadClip}
-                />
-              ))}
-            </div>
-          )}
+          <div
+            className={cn(
+              "transition-[opacity,transform] duration-[420ms] ease-in-out",
+              isSortAnimating
+                ? "translate-y-1 opacity-85"
+                : "translate-y-0 opacity-100",
+            )}
+          >
+            {clipSuggestions.length >= 3 ? (
+              <GoldMomentCarousel
+                key={sortOption}
+                audioFile={audioFile}
+                clipSuggestions={sortedClipSuggestions}
+                downloading={downloading}
+                downloadFormats={downloadFormats}
+                clipSelections={clipSelections}
+                onDownloadFormatChange={onDownloadFormatChange}
+                onClipSelectionChange={onClipSelectionChange}
+                onDownloadClip={onDownloadClip}
+                registerClipPreviewRef={registerClipPreviewRef}
+                onClipPlaybackStart={handleClipPlaybackStart}
+                onCarouselNavigateStart={pauseAllClipPreviews}
+              />
+            ) : (
+              <div className="space-y-4">
+                {sortedClipSuggestions.map((clip, index) => (
+                  <GoldMomentStackedCard
+                    key={getClipKey(clip)}
+                    audioFile={audioFile}
+                    clip={clip}
+                    index={index}
+                    downloading={downloading}
+                    downloadFormats={downloadFormats}
+                    clipSelections={clipSelections}
+                    onDownloadFormatChange={onDownloadFormatChange}
+                    onClipSelectionChange={onClipSelectionChange}
+                    onDownloadClip={onDownloadClip}
+                    registerClipPreviewRef={registerClipPreviewRef}
+                    onClipPlaybackStart={handleClipPlaybackStart}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
 
           <div className="flex flex-col gap-3 rounded-[16px] border border-border bg-primary-wash/52 p-3 shadow-[var(--shadow-card)] sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-3">
@@ -970,10 +1059,13 @@ type GoldMomentCardProps = {
     filename: string,
     format: ClipDownloadFormat,
   ) => void;
+  registerClipPreviewRef: ClipPreviewRefCallback;
+  onClipPlaybackStart: (clipKey: string) => void;
 };
 
 type GoldMomentCarouselProps = Omit<GoldMomentCardProps, "clip" | "index"> & {
   clipSuggestions: ClipSuggestion[];
+  onCarouselNavigateStart: () => void;
 };
 
 function GoldMomentCarousel({
@@ -985,94 +1077,209 @@ function GoldMomentCarousel({
   onDownloadFormatChange,
   onClipSelectionChange,
   onDownloadClip,
+  registerClipPreviewRef,
+  onClipPlaybackStart,
+  onCarouselNavigateStart,
 }: GoldMomentCarouselProps) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const [canScrollLeft, setCanScrollLeft] = useState(false);
-  const [canScrollRight, setCanScrollRight] = useState(false);
+  const [activeStartIndex, setActiveStartIndex] = useState(0);
+  const [isWideCarousel, setIsWideCarousel] = useState(false);
+  const [isCarouselAnimating, setIsCarouselAnimating] = useState(false);
+  const carouselUnlockTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
-  const updateScrollState = useCallback(() => {
-    const scroller = scrollRef.current;
-    if (!scroller) return;
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(min-width: 768px)");
+    const updateCarouselMode = () => setIsWideCarousel(mediaQuery.matches);
 
-    const maxScrollLeft = scroller.scrollWidth - scroller.clientWidth;
-    setCanScrollLeft(scroller.scrollLeft > 2);
-    setCanScrollRight(scroller.scrollLeft < maxScrollLeft - 2);
+    updateCarouselMode();
+    mediaQuery.addEventListener("change", updateCarouselMode);
+
+    return () => mediaQuery.removeEventListener("change", updateCarouselMode);
+  }, []);
+
+  const carouselWindowSize = isWideCarousel
+    ? Math.min(GOLD_MOMENT_DESKTOP_WINDOW_SIZE, clipSuggestions.length)
+    : GOLD_MOMENT_MOBILE_WINDOW_SIZE;
+  const maxStartIndex = Math.max(0, clipSuggestions.length - carouselWindowSize);
+  const safeActiveStartIndex = Math.min(activeStartIndex, maxStartIndex);
+  const canScrollLeft = safeActiveStartIndex > 0;
+  const canScrollRight = safeActiveStartIndex < maxStartIndex;
+  const isScrollable = maxStartIndex > 0;
+  const isAtEnd = isScrollable && safeActiveStartIndex === maxStartIndex;
+  const scrollbarThumbWidth =
+    clipSuggestions.length > 0
+      ? (carouselWindowSize / clipSuggestions.length) * 100
+      : 100;
+  const scrollbarThumbLeft =
+    maxStartIndex > 0
+      ? (safeActiveStartIndex / maxStartIndex) * (100 - scrollbarThumbWidth)
+      : 0;
+  const carouselTrackWidth =
+    clipSuggestions.length > 0
+      ? (clipSuggestions.length / carouselWindowSize) * 100
+      : 100;
+  const carouselItemWidth =
+    clipSuggestions.length > 0 ? 100 / clipSuggestions.length : 100;
+  const carouselTrackOffset =
+    clipSuggestions.length > 0
+      ? (safeActiveStartIndex / clipSuggestions.length) * 100
+      : 0;
+
+  const unlockCarouselNavigation = useCallback(() => {
+    if (carouselUnlockTimeoutRef.current) {
+      clearTimeout(carouselUnlockTimeoutRef.current);
+      carouselUnlockTimeoutRef.current = null;
+    }
+    setIsCarouselAnimating(false);
   }, []);
 
   useEffect(() => {
-    updateScrollState();
+    return () => {
+      if (carouselUnlockTimeoutRef.current) {
+        clearTimeout(carouselUnlockTimeoutRef.current);
+      }
+    };
+  }, []);
 
-    const scroller = scrollRef.current;
-    if (!scroller) return;
+  const moveCarouselWindow = (direction: -1 | 1) => {
+    if (isCarouselAnimating) return;
 
-    const resizeObserver = new ResizeObserver(updateScrollState);
-    resizeObserver.observe(scroller);
-
-    return () => resizeObserver.disconnect();
-  }, [clipSuggestions.length, updateScrollState]);
-
-  const scrollByPage = (direction: -1 | 1) => {
-    const scroller = scrollRef.current;
-    if (!scroller) return;
-
-    const firstCard = scroller.querySelector<HTMLElement>(
-      "[data-gold-moment-card]",
+    const nextStartIndex = clampNumber(
+      safeActiveStartIndex + direction,
+      0,
+      maxStartIndex,
     );
-    const styles = window.getComputedStyle(scroller);
-    const gap = Number.parseFloat(styles.columnGap || styles.gap || "0") || 0;
-    const cardStep = firstCard ? firstCard.offsetWidth + gap : 0;
-    const pageStep = cardStep > 0 ? cardStep * 4 : scroller.clientWidth;
+    if (nextStartIndex === safeActiveStartIndex) return;
 
-    scroller.scrollBy({
-      left: direction * pageStep,
-      behavior: "smooth",
-    });
+    onCarouselNavigateStart();
+    setIsCarouselAnimating(true);
+    if (carouselUnlockTimeoutRef.current) {
+      clearTimeout(carouselUnlockTimeoutRef.current);
+    }
+    carouselUnlockTimeoutRef.current = setTimeout(
+      unlockCarouselNavigation,
+      520,
+    );
+    setActiveStartIndex(() => nextStartIndex);
   };
 
   return (
-    <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 sm:gap-3">
+    <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2 sm:gap-3">
       <Button
         type="button"
         variant="outline"
         size="icon-lg"
-        onClick={() => scrollByPage(-1)}
-        disabled={!canScrollLeft}
+        onClick={() => moveCarouselWindow(-1)}
+        disabled={!canScrollLeft || isCarouselAnimating}
         aria-label="Previous gold moments"
-        className="rounded-full border-border bg-surface text-text-primary shadow-[var(--shadow-card)] hover:bg-primary-wash hover:text-primary-hover disabled:opacity-45"
+        className="mt-24 rounded-full border-border bg-surface text-text-primary shadow-[var(--shadow-card)] hover:bg-primary-wash hover:text-primary-hover disabled:opacity-45"
       >
         <ChevronLeft className="h-5 w-5" aria-hidden="true" />
       </Button>
 
-      <div
-        ref={scrollRef}
-        onScroll={updateScrollState}
-        className="flex min-w-0 snap-x snap-mandatory gap-3 overflow-x-auto scroll-smooth pb-2"
-        aria-label="Gold moment cards"
-      >
-        {clipSuggestions.map((clip, index) => (
-          <GoldMomentCarouselCard
-            key={getClipKey(clip)}
-            audioFile={audioFile}
-            clip={clip}
-            index={index}
-            downloading={downloading}
-            downloadFormats={downloadFormats}
-            clipSelections={clipSelections}
-            onDownloadFormatChange={onDownloadFormatChange}
-            onClipSelectionChange={onClipSelectionChange}
-            onDownloadClip={onDownloadClip}
-          />
-        ))}
+      <div className="min-w-0">
+        <div className="overflow-hidden" aria-label="Gold moment cards">
+          <div
+            className="flex min-w-0 transition-transform duration-[420ms] ease-in-out"
+            style={{
+              width: `${carouselTrackWidth}%`,
+              transform: `translateX(-${carouselTrackOffset}%)`,
+            }}
+            onTransitionEnd={(event) => {
+              if (
+                event.currentTarget === event.target &&
+                event.propertyName === "transform"
+              ) {
+                unlockCarouselNavigation();
+              }
+            }}
+          >
+            {clipSuggestions.map((clip, index) => (
+              <div
+                key={getClipKey(clip)}
+                className="flex min-w-0 shrink-0 px-1.5"
+                style={{ flexBasis: `${carouselItemWidth}%` }}
+              >
+                <GoldMomentCarouselCard
+                  audioFile={audioFile}
+                  clip={clip}
+                  index={index}
+                  downloading={downloading}
+                  downloadFormats={downloadFormats}
+                  clipSelections={clipSelections}
+                  onDownloadFormatChange={onDownloadFormatChange}
+                  onClipSelectionChange={onClipSelectionChange}
+                  onDownloadClip={onDownloadClip}
+                  registerClipPreviewRef={registerClipPreviewRef}
+                  onClipPlaybackStart={onClipPlaybackStart}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-3 space-y-2">
+          <div
+            className="h-2 rounded-full border border-primary/20 bg-primary-wash/70"
+            role="presentation"
+          >
+            <div
+              className="h-full rounded-full bg-primary shadow-[0_0_0_1px_rgba(249,115,22,0.2),0_4px_10px_rgba(249,115,22,0.22)] transition-[margin-left,width] duration-300 ease-out"
+              style={{
+                marginLeft: `${scrollbarThumbLeft}%`,
+                width: `${scrollbarThumbWidth}%`,
+              }}
+            />
+          </div>
+
+          {isScrollable && (
+            <p
+              aria-label={
+                isAtEnd
+                  ? "Scroll back to your earlier moments"
+                  : "Scroll to explore more moments"
+              }
+              className="flex items-center justify-center gap-1.5 text-xs text-text-muted"
+            >
+              <span className="grid" aria-hidden="true">
+                <span
+                  className={cn(
+                    "col-start-1 row-start-1 transition-opacity duration-300 ease-in-out",
+                    isAtEnd ? "opacity-0" : "opacity-100",
+                  )}
+                >
+                  Scroll to explore more moments
+                </span>
+                <span
+                  className={cn(
+                    "col-start-1 row-start-1 transition-opacity duration-300 ease-in-out",
+                    isAtEnd ? "opacity-100" : "opacity-0",
+                  )}
+                >
+                  Scroll back to your earlier moments
+                </span>
+              </span>
+              <ChevronRight
+                className={cn(
+                  "h-4 w-4 text-primary transition-transform duration-300 ease-in-out",
+                  isAtEnd && "rotate-180",
+                )}
+                aria-hidden="true"
+              />
+            </p>
+          )}
+        </div>
       </div>
 
       <Button
         type="button"
         variant="outline"
         size="icon-lg"
-        onClick={() => scrollByPage(1)}
-        disabled={!canScrollRight}
+        onClick={() => moveCarouselWindow(1)}
+        disabled={!canScrollRight || isCarouselAnimating}
         aria-label="Next gold moments"
-        className="rounded-full border-border bg-surface text-text-primary shadow-[var(--shadow-card)] hover:bg-primary-wash hover:text-primary-hover disabled:opacity-45"
+        className="mt-24 rounded-full border-border bg-surface text-text-primary shadow-[var(--shadow-card)] hover:bg-primary-wash hover:text-primary-hover disabled:opacity-45"
       >
         <ChevronRight className="h-5 w-5" aria-hidden="true" />
       </Button>
@@ -1088,7 +1295,7 @@ function GoldMomentCarouselCard(props: GoldMomentCardProps) {
   return (
     <article
       data-gold-moment-card
-      className="flex min-w-[232px] basis-[76vw] snap-start flex-col rounded-[16px] border border-border bg-surface-card p-3 shadow-[var(--shadow-card)] sm:basis-[calc(50%_-_0.375rem)] md:basis-[calc(33.333333%_-_0.5rem)] xl:basis-[calc(25%_-_0.5625rem)]"
+      className="flex h-full min-w-0 flex-col rounded-[16px] border border-border bg-surface-card p-3 shadow-[var(--shadow-card)]"
     >
       <div className="mb-3 flex items-start justify-between gap-2">
         <div
@@ -1109,12 +1316,14 @@ function GoldMomentCarouselCard(props: GoldMomentCardProps) {
 
       <div className="min-w-0">
         <ClipPreview
+          ref={props.registerClipPreviewRef(clipKey)}
           audioFile={props.audioFile}
           clipStart={clipSelection.clipStart}
           clipEnd={clipSelection.clipEnd}
           contextClipStart={clip.clipStart}
           contextClipEnd={clip.clipEnd}
           compact
+          onPlaybackStart={() => props.onClipPlaybackStart(clipKey)}
           onSelectionChange={(selection) =>
             props.onClipSelectionChange(clipKey, selection)
           }
@@ -1157,11 +1366,13 @@ function GoldMomentStackedCard(props: GoldMomentCardProps) {
       <div className="grid gap-5 lg:grid-cols-[minmax(280px,0.95fr)_minmax(0,1fr)_auto] lg:items-center">
         <div className="min-w-0">
           <ClipPreview
+            ref={props.registerClipPreviewRef(clipKey)}
             audioFile={audioFile}
             clipStart={clipSelection.clipStart}
             clipEnd={clipSelection.clipEnd}
             contextClipStart={clip.clipStart}
             contextClipEnd={clip.clipEnd}
+            onPlaybackStart={() => props.onClipPlaybackStart(clipKey)}
             onSelectionChange={(selection) =>
               props.onClipSelectionChange(clipKey, selection)
             }
@@ -1485,6 +1696,10 @@ function formatClipLength(seconds: number) {
 
   const minutes = Math.max(1, Math.round(roundedSeconds / 60));
   return `${minutes}-minute clip`;
+}
+
+function clampNumber(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
 }
 
 function getClipKey(clip: ReturnType<typeof findClipSuggestions>[number]) {

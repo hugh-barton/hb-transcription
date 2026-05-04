@@ -1,7 +1,15 @@
 "use client";
 
 import { Pause, Play } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { AudioFile } from "@/types";
 
 const CONTEXT_PADDING_SECONDS = 30;
@@ -22,25 +30,38 @@ interface ClipPreviewProps {
   contextClipStart?: number;
   contextClipEnd?: number;
   compact?: boolean;
+  onPlaybackStart?: () => void;
   onSelectionChange?: (selection: { clipStart: number; clipEnd: number }) => void;
 }
 
+export type ClipPreviewHandle = {
+  pausePlayback: () => void;
+};
+
 type DragHandle = "start" | "end";
 type PlaybackMode = "selection" | "scrub";
+type ClipSelection = { clipStart: number; clipEnd: number };
 
-export default function ClipPreview({
-  audioFile,
-  clipStart,
-  clipEnd,
-  contextClipStart = clipStart,
-  contextClipEnd = clipEnd,
-  compact = false,
-  onSelectionChange,
-}: ClipPreviewProps) {
+const ClipPreview = forwardRef<ClipPreviewHandle, ClipPreviewProps>(
+  function ClipPreview(
+    {
+      audioFile,
+      clipStart,
+      clipEnd,
+      contextClipStart = clipStart,
+      contextClipEnd = clipEnd,
+      compact = false,
+      onPlaybackStart,
+      onSelectionChange,
+    },
+    ref,
+  ) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const waveformRef = useRef<HTMLDivElement>(null);
   const activeHandleRef = useRef<DragHandle | null>(null);
+  const dragMovedRef = useRef(false);
+  const dragSelectionRef = useRef<ClipSelection | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const playbackModeRef = useRef<PlaybackMode>("selection");
   const stopTimeRef = useRef(clipEnd);
@@ -136,6 +157,45 @@ export default function ClipPreview({
     setPlaybackPercent(null);
   }, [clearPlaybackFrame]);
 
+  const pausePlayback = useCallback(() => {
+    audioRef.current?.pause();
+    stopPlaybackProgress();
+  }, [stopPlaybackProgress]);
+
+  const playSelectionFrom = useCallback(
+    async (startTime: number, endTime: number) => {
+      const audio = audioRef.current;
+      if (!audio) return;
+
+      onPlaybackStart?.();
+      playbackModeRef.current = "selection";
+      stopTimeRef.current = endTime;
+      updatePlaybackPercent(startTime);
+
+      try {
+        await seekAndPlay(audio, startTime);
+        setIsPlaying(true);
+        startPlaybackProgress();
+      } catch {
+        stopPlaybackProgress();
+      }
+    },
+    [
+      onPlaybackStart,
+      startPlaybackProgress,
+      stopPlaybackProgress,
+      updatePlaybackPercent,
+    ],
+  );
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      pausePlayback,
+    }),
+    [pausePlayback],
+  );
+
   const updateSelection = useCallback(
     (nextStart: number, nextEnd: number) => {
       const clampedStart = clamp(
@@ -148,11 +208,13 @@ export default function ClipPreview({
         Math.min(contextEnd, clampedStart + MIN_CLIP_DURATION_SECONDS),
         contextEnd,
       );
-
-      onSelectionChange?.({
+      const selection = {
         clipStart: roundTime(clampedStart),
         clipEnd: roundTime(clampedEnd),
-      });
+      };
+
+      onSelectionChange?.(selection);
+      return selection;
     },
     [contextEnd, contextStart, onSelectionChange],
   );
@@ -298,11 +360,20 @@ export default function ClipPreview({
       if (!activeHandle) return;
 
       const nextTime = timeFromPointer(clientX);
+      const previousSelection = dragSelectionRef.current;
+      const nextSelection =
+        activeHandle === "start"
+          ? updateSelection(nextTime, selectedEnd)
+          : updateSelection(selectedStart, nextTime);
 
-      if (activeHandle === "start") {
-        updateSelection(nextTime, selectedEnd);
-      } else {
-        updateSelection(selectedStart, nextTime);
+      dragSelectionRef.current = nextSelection;
+
+      if (
+        previousSelection &&
+        (previousSelection.clipStart !== nextSelection.clipStart ||
+          previousSelection.clipEnd !== nextSelection.clipEnd)
+      ) {
+        dragMovedRef.current = true;
       }
     },
     [selectedEnd, selectedStart, timeFromPointer, updateSelection],
@@ -316,19 +387,39 @@ export default function ClipPreview({
     };
 
     const handlePointerUp = () => {
+      const releasedHandle = activeHandleRef.current;
+      const latestSelection = dragSelectionRef.current;
+      const shouldAutoPlayStart =
+        releasedHandle === "start" && dragMovedRef.current && latestSelection;
+
       activeHandleRef.current = null;
+      dragMovedRef.current = false;
+      dragSelectionRef.current = null;
+
+      if (shouldAutoPlayStart) {
+        void playSelectionFrom(
+          latestSelection.clipStart,
+          latestSelection.clipEnd,
+        );
+      }
+    };
+
+    const handlePointerCancel = () => {
+      activeHandleRef.current = null;
+      dragMovedRef.current = false;
+      dragSelectionRef.current = null;
     };
 
     window.addEventListener("pointermove", handlePointerMove);
     window.addEventListener("pointerup", handlePointerUp);
-    window.addEventListener("pointercancel", handlePointerUp);
+    window.addEventListener("pointercancel", handlePointerCancel);
 
     return () => {
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("pointerup", handlePointerUp);
-      window.removeEventListener("pointercancel", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerCancel);
     };
-  }, [handleDragMove]);
+  }, [handleDragMove, playSelectionFrom]);
 
   const handleWaveformPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
     const waveform = waveformRef.current;
@@ -350,6 +441,7 @@ export default function ClipPreview({
     if (!audio) return;
 
     const scrubStart = timeFromPointer(event.clientX);
+    onPlaybackStart?.();
     playbackModeRef.current = "scrub";
     stopTimeRef.current = contextEnd;
     updatePlaybackPercent(scrubStart);
@@ -370,6 +462,11 @@ export default function ClipPreview({
     event.preventDefault();
     event.stopPropagation();
     activeHandleRef.current = handle;
+    dragMovedRef.current = false;
+    dragSelectionRef.current = {
+      clipStart: selectedStart,
+      clipEnd: selectedEnd,
+    };
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
@@ -383,17 +480,7 @@ export default function ClipPreview({
       return;
     }
 
-    playbackModeRef.current = "selection";
-    stopTimeRef.current = selectedEnd;
-    updatePlaybackPercent(selectedStart);
-
-    try {
-      await seekAndPlay(audio, selectedStart);
-      setIsPlaying(true);
-      startPlaybackProgress();
-    } catch {
-      stopPlaybackProgress();
-    }
+    await playSelectionFrom(selectedStart, selectedEnd);
   };
 
   const readout = useMemo(
@@ -510,7 +597,10 @@ export default function ClipPreview({
       ) : null}
     </div>
   );
-}
+  },
+);
+
+export default ClipPreview;
 
 function Handle({
   label,

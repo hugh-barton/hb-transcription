@@ -1,4 +1,7 @@
-import { Segment } from "@/types";
+import type { Segment } from "@/types";
+
+const MATCH_MERGE_WINDOW_SECONDS = 10;
+const CLIP_PADDING_SECONDS = 30;
 
 export const TRIGGER_PHRASES = [
   "that's gold",
@@ -74,7 +77,7 @@ function mergeNearbyMatches(
 
     if (
       currentGroup.length === 0 ||
-      match.matchedSegment.start - latestTriggerStart <= 30
+      match.matchedSegment.start - latestTriggerStart <= MATCH_MERGE_WINDOW_SECONDS
     ) {
       currentGroup.push(match);
       continue;
@@ -109,8 +112,14 @@ function buildClipSuggestion(
   return {
     triggerPhrase: triggerPhrases.join(", "),
     matchedSegment: earliestMatch.matchedSegment,
-    clipStart: Math.max(0, earliestMatch.matchedSegment.start - 30),
-    clipEnd: Math.min(fileDuration, latestMatch.matchedSegment.end + 30),
+    clipStart: Math.max(
+      0,
+      earliestMatch.matchedSegment.start - CLIP_PADDING_SECONDS,
+    ),
+    clipEnd: Math.min(
+      fileDuration,
+      latestMatch.matchedSegment.end + CLIP_PADDING_SECONDS,
+    ),
     filename: slugify(surroundingText) + ".mp3",
   };
 }

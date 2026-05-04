@@ -143,18 +143,21 @@ types/
 - Shows **New Session** and **View Transcript** actions.
 - Transcript opens in a modal with copy support.
 - Clip suggestions appear in a full-width **Gold Moment** / **Gold Moments** results page.
-- The top summary card says **“We found 1 gold moment!”** or **“We found n gold moments!”**, shows the uploaded session filename/metadata, includes a decorative waveform, and has a presentational **View Full Session** button.
-- For 3+ suggestions, results use a horizontal carousel of compact moment cards. Desktop shows 4 equal-width cards per page; overflow is available by horizontal scroll or the left/right arrow buttons. With exactly 4 suggestions, the cards fill the available row without an empty trailing slot.
+- The top summary card says **“We found 1 gold moment!”** or **“We found n gold moments!”**, shows the uploaded session filename/metadata, and has a presentational **View Full Session** button aligned to the lower right.
+- Gold moment cards default to chronological **Time: Ascending** order. The **Sort by** dropdown can switch immediately between **Time: Ascending** and **Time: Descending**, keeping the selected option visible while the card list transitions smoothly and the carousel returns to the first visible window for the new order.
+- For 3+ suggestions, results use a controlled carousel of compact moment cards. Desktop/tablet shows exactly 4 equal-width cards at a time when at least 4 moments exist; mobile shows one full card at a time to avoid cramped partial cards. Arrow navigation advances one card at a time with a continuous sliding track animation, so an 8-card set moves 1-4, 2-5, 3-6, 4-7, then 5-8, while always keeping a full four-card desktop/tablet window. Carousel arrows are locked while the slide transition is running.
+- The Gold Moment carousel uses a custom orange progress scrollbar under the card row instead of native horizontal browser chrome. A **“Scroll to explore more moments”** indicator with a right arrow appears while more cards exist beyond the current visible set; on the final group it smoothly changes to **“Scroll back to your earlier moments”** with a left-pointing orange arrow.
 - For 1-2 suggestions, results keep the wider stacked card layout.
 - Each moment card shows the interactive waveform editor from `ClipPreview`, the matched transcript quote/description, the editable timestamp/clip length, a working download button, an MP3/M4A selector, and a presentational kebab menu.
 - Compact carousel cards use only the sparkle icon plus result number as the rank marker; the quote/description is the card title, and rank captions are omitted.
 - `ClipPreview` decodes the uploaded source file with the browser Web Audio API and renders waveform peaks on a canvas. It caches browser decode promises per file, skips client waveform decoding for very large/long files, and shows 30 seconds of context before/after the generated clip when available.
 - Rendered waveform amplitudes are normalized per visible context window so quiet and loud recordings fill a consistent percentage of the canvas height while preserving the real relative shape of transients, silences, and dynamics. This is display-only and does not alter playback or downloaded audio.
 - Clip preview audio uses stable object URLs cached per uploaded `File`; the hidden `<audio>` element is keyed by that URL so new sessions/reuploads get a clean media element without React dev Strict Mode revoking a live preview source.
-- The orange start/end playheads initialize from the generated clip window. Dragging either playhead updates the selected region, timestamp readout, playback range, and eventual download payload in real time.
+- The orange start/end playheads initialize from the generated clip window. Dragging either playhead updates the selected region, timestamp readout, playback range, and eventual download payload in real time. Releasing a moved start playhead automatically starts selected-region playback from the new start point; releasing the end playhead does not auto-play.
 - Playheads are clamped to the visible context/source duration and enforce a 5-second minimum clip length.
 - Clicking the main play button always starts playback from the current start playhead and stops at the current end playhead.
 - Hovering over the waveform shows a dark vertical preview cursor. Clicking the waveform starts non-destructive scrub playback from that point without moving either playhead; scrub playback stops at the visible context end.
+- Gold Moment previews coordinate playback across the results screen: starting selected-region or scrub playback in one card immediately pauses every other mounted card in the current carousel window, and cards that leave the window are paused as they unmount.
 - A Goldfish-orange playback bar appears during both selected-region playback and scrub playback, moving across the waveform in sync with `audio.currentTime`.
 - Carousel waveform previews use a compact play button aligned to the waveform centerline, with smaller clip range/readout text to preserve card vertical space.
 - Downloads are named from the result index and original upload name: `gold-1-originalfilename.m4a`, `gold-2-originalfilename.mp3`, etc. The number matches the Gold Moment’s position in the results list and the extension follows the selected format.
@@ -219,7 +222,7 @@ Matching behavior:
 - Case-insensitive substring match against each normalized transcript segment.
 - Each segment can only match once.
 - Matches are sorted chronologically.
-- Nearby matches within 30 seconds are merged into one clip group.
+- Nearby matches within 10 seconds are merged into one clip group.
 - Clip window is `max(0, earliestMatch.start - 30s)` to `min(fileDuration, latestMatch.end + 30s)`.
 - Suggested filenames are slugified from the matched segment plus nearby context and default to `.mp3` before the selected download format is applied.
 
